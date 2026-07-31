@@ -1,0 +1,28 @@
+POST http://localhost:8080/api/shopping/orchestrate
+Content-Type: application/json
+
+{
+  "goal": {
+    "consumerId": "consumer-001",
+    "originalRequest": "Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.",
+    "productName": "Container-suitable dahlia",
+    "maximumTotalCents": 5000,
+    "deliveryDeadline": "2026-08-31",
+    "substitutionsAllowed": true
+  },
+  "preferences": {
+    "consumerId": "consumer-001",
+    "preferredMerchants": [
+      "merchant-specialist-nursery"
+    ],
+    "avoidedMerchants": [
+      "Grace Rose Farm
+    ],
+    "preferredMerchantTypes": [
+      "SPECIALIST_NURSERY"
+    ],
+    "preferredMinimumFulfillmentScore": 90,
+    "preferredMinimumReviewScore": 90,
+    "askBeforeUsingNewMerchant": true
+  }
+}
