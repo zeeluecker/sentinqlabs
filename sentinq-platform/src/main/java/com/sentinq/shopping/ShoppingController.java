@@ -21,11 +21,8 @@ public class ShoppingController {
 
     @PostMapping("/orchestrate")
     public ShoppingOrchestrationResult orchestrate(
-            @RequestBody ShoppingOrchestrationRequest request
+            @RequestBody ShoppingGoalRequest request
     ) {
-        return orchestrationService.orchestrate(
-                request.goal(),
-                request.preferences()
-        );
+        return orchestrationService.orchestrate(request);
     }
 }

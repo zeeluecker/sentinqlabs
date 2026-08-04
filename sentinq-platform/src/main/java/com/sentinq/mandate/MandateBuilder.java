@@ -14,7 +14,7 @@ public class MandateBuilder {
         MandateEnvelope mandate = new MandateEnvelope();
 
         mandate.setGoalId(goal.getGoalId());
-        mandate.setConsumerId(goal.getConsumerId());
+        mandate.setPrincipalId(goal.getPrincipalId());
         mandate.setObjective(goal.getProductName());
 
         mandate.setMaximumTotalCents(goal.getMaximumTotalCents());

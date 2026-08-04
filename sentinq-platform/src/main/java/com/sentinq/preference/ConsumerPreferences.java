@@ -2,10 +2,11 @@ package com.sentinq.preference;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 public class ConsumerPreferences {
 
-    private String consumerId;
+    private UUID principalId;
     private List<String> preferredMerchants;
     private List<String> avoidedMerchants;
     private List<String> preferredMerchantTypes;
@@ -19,12 +20,12 @@ public class ConsumerPreferences {
         this.preferredMerchantTypes = new ArrayList<>();
     }
 
-    public String getConsumerId() {
-        return consumerId;
+    public UUID getPrincipalId() {
+        return principalId;
     }
 
-    public void setConsumerId(String consumerId) {
-        this.consumerId = consumerId;
+    public void setPrincipalId(UUID principalId) {
+        this.principalId = principalId;
     }
 
     public List<String> getPreferredMerchants() {

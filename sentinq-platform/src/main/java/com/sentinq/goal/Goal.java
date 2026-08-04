@@ -6,7 +6,7 @@ import java.util.UUID;
 public class Goal {
 
     private UUID goalId;
-    private String consumerId;
+    private UUID principalId;
     private String originalRequest;
     private String productName;
     private Integer maximumTotalCents;
@@ -25,12 +25,12 @@ public class Goal {
         this.goalId = goalId;
     }
 
-    public String getConsumerId() {
-        return consumerId;
+    public UUID getPrincipalId() {
+        return principalId;
     }
 
-    public void setConsumerId(String consumerId) {
-        this.consumerId = consumerId;
+    public void setPrincipalId(UUID principalId) {
+        this.principalId = principalId;
     }
 
     public String getOriginalRequest() {

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sentinq Command Center</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div><div class="brand-name">Sentinq</div><div class="brand-subtitle">AI Control Plane</div></div>
+      </div>
+      <nav class="nav" aria-label="Primary">
+        <button class="nav-item active" data-view="overview">Overview</button>
+        <button class="nav-item" data-view="agents">Agents</button>
+        <button class="nav-item" data-view="mandates">Mandates <span id="mandateCount">0</span></button>
+        <button class="nav-item" data-view="audit">Audit</button>
+        <button class="nav-item" data-view="shop">Shopping Agent</button>
+      </nav>
+      <div class="sidebar-footer"><span class="status-dot"></span><div><strong>Sentinq Platform</strong><span id="platformStatus">Checking connection…</span></div></div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><p class="eyebrow">SENTINQ LABS</p><h1 id="pageTitle">Command Center</h1></div>
+        <div class="principal-chip"><div class="avatar">ZL</div><div><strong>Zee Luecker</strong><span>Principal</span></div></div>
+      </header>
+
+      <section class="view active" id="overviewView">
+        <div class="hero-card">
+          <div><span class="badge badge-accent">Control Plane ↔ Runtime</span><h2>Govern how agents act on your behalf.</h2><p>Sentinq scopes context, establishes delegated authority, validates execution, and preserves an auditable record of every decision.</p></div>
+          <button class="primary-button" data-go-to="shop">Open Shopping Agent</button>
+        </div>
+        <div class="metric-grid">
+          <article class="metric-card"><span>Connected agents</span><strong>1</strong><small>1 active</small></article>
+          <article class="metric-card"><span>Active delegations</span><strong>1</strong><small>Approval required</small></article>
+          <article class="metric-card"><span>Mandates created</span><strong id="overviewMandateCount">0</strong><small>This session</small></article>
+          <article class="metric-card"><span>Blocked actions</span><strong id="blockedCount">0</strong><small>Hard constraints protected</small></article>
+        </div>
+        <div class="content-grid">
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">LIVE GOVERNANCE</p><h3>Latest workflow</h3></div><span class="badge">Ready</span></div><ol class="workflow" id="workflowList"><li class="complete"><span></span>Agent authenticated</li><li class="complete"><span></span>Delegation established</li><li><span></span>Waiting for consumer goal</li><li><span></span>Mandate synthesis</li><li><span></span>Late-binding resolution</li><li><span></span>Execution validation</li></ol></article>
+          <article class="panel"><div class="panel-heading"><div><p class="eyebrow">CONNECTED AGENT</p><h3>Sentinq Shopping Agent</h3></div><span class="badge badge-success">Active</span></div><dl class="detail-list"><div><dt>Provider</dt><dd>OpenAI</dd></div><div><dt>Acts on behalf of</dt><dd>Zee Luecker</dd></div><div><dt>Execution</dt><dd>Approval required</dd></div><div><dt>Credential access</dt><dd>Token reference only</dd></div></dl></article>
+        </div>
+      </section>
+
+      <section class="view" id="agentsView">
+        <div class="section-heading"><div><p class="eyebrow">IDENTITY & DELEGATION</p><h2>Connected agents</h2></div></div>
+        <article class="panel agent-card"><div class="agent-header"><div class="agent-icon">AI</div><div><h3>Sentinq Shopping Agent</h3><p>OpenAI · Shopping orchestration</p></div><span class="badge badge-success">Active</span></div><div class="permission-grid"><div><h4>Permitted</h4><ul class="permission-list allowed"><li>Interpret shopping goals</li><li>Read scoped shopping preferences</li><li>Search merchant offers</li><li>Request late-binding resolution</li><li>Build candidate carts</li></ul></div><div><h4>Restricted</h4><ul class="permission-list denied"><li>Read raw payment credentials</li><li>Execute without approval</li><li>Change consumer preferences</li><li>Exceed mandate authority</li></ul></div></div></article>
+      </section>
+
+      <section class="view" id="mandatesView">
+        <div class="section-heading"><div><p class="eyebrow">DELEGATED AUTHORITY</p><h2>Mandates</h2></div></div>
+        <div id="mandateEmpty" class="empty-state"><div class="empty-icon">M</div><h3>No mandates yet</h3><p>Run the Shopping Agent to synthesize the first governed mandate.</p><button class="secondary-button" data-go-to="shop">Create a mandate</button></div>
+        <div id="mandateList" class="mandate-list hidden"></div>
+      </section>
+
+      <section class="view" id="auditView">
+        <div class="section-heading"><div><p class="eyebrow">TRACEABILITY</p><h2>Audit timeline</h2></div></div>
+        <article class="panel"><div id="auditTimeline" class="audit-timeline"><div class="audit-event"><span class="audit-dot"></span><div><strong>Sentinq platform ready</strong><p>Awaiting the first delegated shopping goal.</p><time>Now</time></div></div></div></article>
+      </section>
+
+      <section class="view" id="shopView">
+        <div class="shop-layout">
+          <div>
+            <div class="section-heading"><div><p class="eyebrow">RUNTIME DEMO</p><h2>Shopping Agent</h2><p class="section-copy">Submit a goal. Sentinq will synthesize a mandate, resolve candidate carts, and block any option that violates hard constraints.</p></div></div>
+            <article class="panel"><label for="goalInput">Shopping goal</label><textarea id="goalInput" rows="6">Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.</textarea><div class="form-grid"><div><label for="budgetInput">Maximum total</label><div class="input-prefix"><span>$</span><input id="budgetInput" type="number" value="50" min="1" /></div></div><div><label for="deadlineInput">Delivery deadline</label><input id="deadlineInput" type="date" value="2026-08-31" /></div></div><div class="form-actions"><button class="primary-button" id="runButton">Run orchestration</button><span id="runStatus" class="run-status" aria-live="polite"></span></div></article>
+          </div>
+          <aside class="panel side-panel"><p class="eyebrow">ACTIVE DELEGATION</p><h3>Shopping authority</h3><dl class="detail-list"><div><dt>Principal</dt><dd>Zee Luecker</dd></div><div><dt>Agent</dt><dd>Shopping Agent</dd></div><div><dt>New merchant</dt><dd>Ask first</dd></div><div><dt>Purchase</dt><dd>Approval required</dd></div></dl></aside>
+        </div>
+        <div id="shopResults" class="hidden"><section id="mandateResult"></section><section id="selectedResult"></section><section id="candidateResults"></section></div>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
