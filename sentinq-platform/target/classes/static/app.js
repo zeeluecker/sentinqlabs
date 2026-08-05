@@ -198,24 +198,24 @@ function readShoppingForm() {
  */
 function buildOrchestrationRequest(formInput) {
   return {
-    goal: {
-      consumerId: "consumer-001",
-      originalRequest: formInput.goalText,
-      productName: "Container-suitable dahlia",
-      maximumTotalCents: Math.round(formInput.budgetDollars * 100),
-      deliveryDeadline: formInput.deliveryDeadline,
-      substitutionsAllowed: true
-    },
-    preferences: {
-      consumerId: "consumer-001",
-      preferredMerchants: ["merchant-specialist-nursery"],
-      avoidedMerchants: ["merchant-x"],
-      preferredMerchantTypes: ["SPECIALIST_NURSERY"],
-      preferredMinimumFulfillmentScore: 90,
-      preferredMinimumReviewScore: 90,
-      askBeforeUsingNewMerchant: true
-    }
+    principalId: "11111111-1111-1111-1111-111111111111",
+
+    agentId: "22222222-2222-2222-2222-222222222222",
+
+    goalText: buildGoalText(formInput)
   };
+}
+
+function buildGoalText(formInput) {
+  return `
+    ${formInput.goalText}
+
+    Maximum total budget:
+    $${formInput.budgetDollars}
+
+    Required delivery deadline:
+    ${formInput.deliveryDeadline}
+  `.trim();
 }
 
 /**

@@ -1,6 +1,7 @@
 package com.sentinq.shopping;
 
-import com.sentinq.goal.Goal;
+import com.sentinq.ai.*;
+import com.sentinq.goal.*;
 import com.sentinq.identity.*;
 import com.sentinq.identity.PrincipalService;
 import com.sentinq.mandate.MandateBuilder;
@@ -26,6 +27,10 @@ public class ShoppingOrchestrationService {
     private final AgentIdentityService agentIdentityService;
     private final AgentDelegationService agentDelegationService;
     private final ConsumerPreferencesService consumerPreferencesService;
+    private final GoalInterpretationService goalInterpretationService;
+    private final GoalFactory goalFactory;
+    private final ProductSearchService productSearchService;
+    private final CandidateOfferFactory candidateOfferFactory;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -34,7 +39,12 @@ public class ShoppingOrchestrationService {
             PrincipalService principalService,
             AgentIdentityService agentIdentityService,
             AgentDelegationService agentDelegationService,
-            ConsumerPreferencesService consumerPreferencesService
+            ConsumerPreferencesService consumerPreferencesService,
+            GoalInterpretationService goalInterpretationService,
+            GoalFactory goalFactory,
+            ProductSearchService productSearchService,
+            CandidateOfferFactory candidateOfferFactory
+
     ) {
         this.mandateBuilder = mandateBuilder;
         this.resolutionService = resolutionService;
@@ -43,6 +53,10 @@ public class ShoppingOrchestrationService {
         this.agentIdentityService = agentIdentityService;
         this.agentDelegationService = agentDelegationService;
         this.consumerPreferencesService = consumerPreferencesService;
+        this.goalInterpretationService = goalInterpretationService;
+        this.goalFactory = goalFactory;
+        this.productSearchService = productSearchService;
+        this.candidateOfferFactory = candidateOfferFactory;
     }
 
     public ShoppingOrchestrationResult orchestrate(
@@ -69,33 +83,18 @@ public class ShoppingOrchestrationService {
                         principal.getPrincipalId()
                 );
 
-        Goal goal = new Goal();
+        InterpretedShoppingGoal interpretation =
+                goalInterpretationService.interpret(
+                        request.goalText()
+                );
 
-        goal.setPrincipalId(
-                principal.getPrincipalId()
-        );
+        Goal goal =
+                goalFactory.create(
+                        principal.getPrincipalId(),
+                        request.goalText(),
+                        interpretation
+                );
 
-        goal.setOriginalRequest(
-                request.goalText()
-        );
-
-        // Temporary hardcoded interpretation.
-        // GPT will replace this block next.
-        goal.setProductName(
-                "Container-suitable dahlia"
-        );
-
-        goal.setMaximumTotalCents(
-                5000
-        );
-
-        goal.setDeliveryDeadline(
-                LocalDate.of(2026, 8, 31)
-        );
-
-        goal.setSubstitutionsAllowed(
-                true
-        );
 
         MandateEnvelope mandate =
                 mandateBuilder.build(
@@ -119,10 +118,16 @@ public class ShoppingOrchestrationService {
                 delegation.getDelegationId()
         );
 
-        List<CandidateOffer> candidates =
-                merchantSearchService.search(
-                        goal
+        ProductSearchResult searchResult =
+                productSearchService.search(
+                        goal,
+                        preferences
                 );
+
+        List<CandidateOffer> candidates =
+                searchResult.offers.stream()
+                        .map(candidateOfferFactory::create)
+                        .toList();
 
         List<ResolvedCandidate> resolvedCandidates =
                 candidates.stream()

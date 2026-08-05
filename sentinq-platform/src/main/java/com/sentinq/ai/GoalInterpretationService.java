@@ -1,16 +1,37 @@
 package com.sentinq.ai;
 
-import com.openai.client.OpenAIClient;
-import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.sentinq.ai.provider.LlmProvider;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GoalInterpretationService {
 
-    private final OpenAIClient openAIClient;
+    private final LlmProvider llmProvider;
 
-    public GoalInterpretationService() {
-        this.openAIClient =
-                OpenAIOkHttpClient.fromEnv();
+    public GoalInterpretationService(
+            LlmProvider llmProvider
+    ) {
+        this.llmProvider = llmProvider;
+    }
+
+    public InterpretedShoppingGoal interpret(
+            String rawGoalText
+    ) {
+        validateGoalText(rawGoalText);
+
+        return llmProvider.interpretShoppingGoal(
+                rawGoalText
+        );
+    }
+
+    private void validateGoalText(
+            String rawGoalText
+    ) {
+        if (rawGoalText == null ||
+                rawGoalText.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Goal text is required."
+            );
+        }
     }
 }
