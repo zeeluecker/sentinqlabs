@@ -62,16 +62,143 @@
         <article class="panel"><div id="auditTimeline" class="audit-timeline"><div class="audit-event"><span class="audit-dot"></span><div><strong>Sentinq platform ready</strong><p>Awaiting the first delegated shopping goal.</p><time>Now</time></div></div></div></article>
       </section>
 
-      <section class="view" id="shopView">
-        <div class="shop-layout">
-          <div>
-            <div class="section-heading"><div><p class="eyebrow">RUNTIME DEMO</p><h2>Shopping Agent</h2><p class="section-copy">Submit a goal. Sentinq will synthesize a mandate, resolve candidate carts, and block any option that violates hard constraints.</p></div></div>
-            <article class="panel"><label for="goalInput">Shopping goal</label><textarea id="goalInput" rows="6">Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.</textarea><div class="form-grid"><div><label for="budgetInput">Maximum total</label><div class="input-prefix"><span>$</span><input id="budgetInput" type="number" value="50" min="1" /></div></div><div><label for="deadlineInput">Delivery deadline</label><input id="deadlineInput" type="date" value="2026-08-31" /></div></div><div class="form-actions"><button class="primary-button" id="runButton">Run orchestration</button><span id="runStatus" class="run-status" aria-live="polite"></span></div></article>
-          </div>
-          <aside class="panel side-panel"><p class="eyebrow">ACTIVE DELEGATION</p><h3>Shopping authority</h3><dl class="detail-list"><div><dt>Principal</dt><dd>Zee Luecker</dd></div><div><dt>Agent</dt><dd>Shopping Agent</dd></div><div><dt>New merchant</dt><dd>Ask first</dd></div><div><dt>Purchase</dt><dd>Approval required</dd></div></dl></aside>
-        </div>
-        <div id="shopResults" class="hidden"><section id="mandateResult"></section><section id="selectedResult"></section><section id="candidateResults"></section></div>
-      </section>
+        <section class="view" id="shopView">
+            <div class="shop-layout">
+                <div>
+                    <div class="section-heading">
+                        <div>
+                            <p class="eyebrow">RUNTIME DEMO</p>
+
+                            <h2>Shopping Agent</h2>
+
+                            <p class="section-copy">
+                                Submit a goal. Sentinq will synthesize a mandate,
+                                resolve candidate carts, and block any option that
+                                violates hard constraints.
+                            </p>
+                        </div>
+                    </div>
+
+                    <article class="panel">
+
+                        <div class="form-group agent-field">
+                            <label for="agentSelect">
+                                Reasoning agent
+                            </label>
+
+                            <div class="agent-control-row">
+                                <select id="agentSelect" name="agentId">
+                                    <option value="">
+                                        Loading available agents...
+                                    </option>
+                                </select>
+
+                                <span
+                                        id="agentDescription"
+                                        class="agent-description"
+                                >
+                                    Select an available agent
+                                </span>
+                            </div>
+                        </div>
+
+                        <label for="goalInput">
+                            Shopping goal
+                        </label>
+
+                        <textarea id="goalInput" rows="6">
+Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.
+        </textarea>
+
+                        <div class="form-grid">
+                            <div>
+                                <label for="budgetInput">
+                                    Maximum total
+                                </label>
+
+                                <div class="input-prefix">
+                                    <span>$</span>
+
+                                    <input
+                                            id="budgetInput"
+                                            type="number"
+                                            value="50"
+                                            min="1"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label for="deadlineInput">
+                                    Delivery deadline
+                                </label>
+
+                                <input
+                                        id="deadlineInput"
+                                        type="date"
+                                        value="2026-08-31"
+                                />
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button
+                                    class="primary-button"
+                                    id="runButton"
+                            >
+                                Run orchestration
+                            </button>
+
+                            <span
+                                    id="runStatus"
+                                    class="run-status"
+                                    aria-live="polite"
+                            ></span>
+                        </div>
+                    </article>
+                </div>
+
+                <aside class="panel side-panel">
+                    <p class="eyebrow">
+                        ACTIVE DELEGATION
+                    </p>
+
+                    <h3>
+                        Shopping authority
+                    </h3>
+
+                    <dl class="detail-list">
+                        <div>
+                            <dt>Principal</dt>
+                            <dd>Zee Luecker</dd>
+                        </div>
+
+                        <div>
+                            <dt>Agent</dt>
+                            <dd id="activeAgentName">
+                                Shopping Agent
+                            </dd>
+                        </div>
+
+                        <div>
+                            <dt>New merchant</dt>
+                            <dd>Ask first</dd>
+                        </div>
+
+                        <div>
+                            <dt>Purchase</dt>
+                            <dd>Approval required</dd>
+                        </div>
+                    </dl>
+                </aside>
+            </div>
+
+            <div id="shopResults" class="hidden">
+                <section id="mandateResult"></section>
+                <section id="selectedResult"></section>
+                <section id="candidateResults"></section>
+            </div>
+        </section>
     </main>
   </div>
   <script src="app.js"></script>

@@ -85,6 +85,7 @@ public class ShoppingOrchestrationService {
 
         InterpretedShoppingGoal interpretation =
                 goalInterpretationService.interpret(
+                        agent.getProvider(),
                         request.goalText()
                 );
 
@@ -120,6 +121,7 @@ public class ShoppingOrchestrationService {
 
         ProductSearchResult searchResult =
                 productSearchService.search(
+                        agent.getProvider(),
                         goal,
                         preferences
                 );

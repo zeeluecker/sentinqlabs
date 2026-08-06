@@ -8,9 +8,14 @@ import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.sentinq.ai.InterpretedShoppingGoal;
 import org.springframework.stereotype.Component;
+import com.openai.models.responses.WebSearchTool;
+import com.sentinq.ai.ProductSearchResult;
+import com.sentinq.goal.Goal;
+import com.sentinq.preference.ConsumerPreferences;
 
 @Component
-public class OpenAiProvider implements LlmProvider {
+public class OpenAiProvider
+        implements LlmProvider, ProductSearchProvider {
 
     private final OpenAIClient openAIClient;
 
@@ -56,6 +61,124 @@ public class OpenAiProvider implements LlmProvider {
                                 "OpenAI returned no structured goal interpretation."
                         )
                 );
+    }
+    @Override
+    public ProductSearchResult searchProducts(
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        validateSearchInputs(
+                goal,
+                preferences
+        );
+
+        StructuredResponseCreateParams<ProductSearchResult> params =
+                ResponseCreateParams.builder()
+                        .model(ChatModel.GPT_5_2)
+                        .input(
+                                buildProductSearchPrompt(
+                                        goal,
+                                        preferences
+                                )
+                        )
+                        .addTool(
+                                WebSearchTool.builder()
+                                        .type(
+                                                WebSearchTool.Type.WEB_SEARCH
+                                        )
+                                        .build()
+                        )
+                        .text(ProductSearchResult.class)
+                        .build();
+
+        StructuredResponse<ProductSearchResult> response =
+                openAIClient.responses()
+                        .create(params);
+
+        return response.output()
+                .stream()
+                .flatMap(outputItem ->
+                        outputItem.message().stream()
+                )
+                .flatMap(message ->
+                        message.content().stream()
+                )
+                .flatMap(content ->
+                        content.outputText().stream()
+                )
+                .findFirst()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "OpenAI returned no product-search results."
+                        )
+                );
+    }
+
+    private String buildProductSearchPrompt(
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        return """
+            You are performing product discovery for Sentinq.
+
+            Search the public web for real, currently listed products.
+
+            Shopping goal:
+            - Product: %s
+            - Original request: %s
+            - Maximum total budget: %d cents
+            - Delivery deadline: %s
+            - Substitutions allowed: %s
+
+            Consumer merchant preferences:
+            - Preferred merchants: %s
+            - Avoided merchants: %s
+            - Preferred merchant types: %s
+            - Minimum fulfillment score: %s
+            - Minimum review score: %s
+            - Ask before using a new merchant: %s
+
+            Rules:
+            - Return no more than five offers.
+            - Prefer explicitly preferred merchants where relevant.
+            - Do not return avoided merchants.
+            - Return only real products discovered through web search.
+            - Do not invent merchants, URLs, prices, or availability.
+            - productPriceCents must contain the listed item price only.
+            - Shipping, tax, and delivery feasibility will be resolved
+              separately by Sentinq.
+            - Include a concise explanation of why each product matches.
+
+            """.formatted(
+                goal.getProductName(),
+                goal.getOriginalRequest(),
+                goal.getMaximumTotalCents(),
+                goal.getDeliveryDeadline(),
+                goal.isSubstitutionsAllowed(),
+                preferences.getPreferredMerchants(),
+                preferences.getAvoidedMerchants(),
+                preferences.getPreferredMerchantTypes(),
+                preferences.getPreferredMinimumFulfillmentScore(),
+                preferences.getPreferredMinimumReviewScore(),
+                preferences.isAskBeforeUsingNewMerchant()
+        );
+    }
+
+    private void validateSearchInputs(
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        if (goal == null) {
+            throw new IllegalArgumentException(
+                    "Goal is required for product search."
+            );
+        }
+
+        if (preferences == null) {
+            throw new IllegalArgumentException(
+                    "Consumer preferences are required for product search."
+            );
+        }
     }
 
     private String buildPrompt(

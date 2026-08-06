@@ -1,25 +1,32 @@
 package com.sentinq.ai;
 
 import com.sentinq.ai.provider.LlmProvider;
+import com.sentinq.ai.provider.LlmProviderRegistry;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GoalInterpretationService {
 
-    private final LlmProvider llmProvider;
+    private final LlmProviderRegistry providerRegistry;
 
     public GoalInterpretationService(
-            LlmProvider llmProvider
+            LlmProviderRegistry providerRegistry
     ) {
-        this.llmProvider = llmProvider;
+        this.providerRegistry = providerRegistry;
     }
 
     public InterpretedShoppingGoal interpret(
+            String provider,
             String rawGoalText
     ) {
         validateGoalText(rawGoalText);
 
-        return llmProvider.interpretShoppingGoal(
+        LlmProvider llmprovider =
+                providerRegistry.getProvider(
+                        provider
+                );
+
+        return llmprovider.interpretShoppingGoal(
                 rawGoalText
         );
     }

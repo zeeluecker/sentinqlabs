@@ -55,6 +55,14 @@ const elements = {
   candidateResults: document.getElementById("candidateResults")
 };
 
+const agentSelect =
+  document.getElementById("agentSelect");
+
+const agentDescription =
+  document.getElementById("agentDescription");
+
+const activeAgentName =
+  document.getElementById("activeAgentName");
 // -----------------------------------------------------------------------------
 // 3. Application startup and event registration
 // -----------------------------------------------------------------------------
@@ -197,12 +205,21 @@ function readShoppingForm() {
  * the principal profile, agent delegation, and preference services.
  */
 function buildOrchestrationRequest(formInput) {
+  if (!agentSelect.value) {
+    throw new Error(
+      "Select an AI agent before running orchestration."
+    );
+  }
+
   return {
-    principalId: "11111111-1111-1111-1111-111111111111",
+    principalId:
+      "11111111-1111-1111-1111-111111111111",
 
-    agentId: "22222222-2222-2222-2222-222222222222",
+    agentId:
+      agentSelect.value,
 
-    goalText: buildGoalText(formInput)
+    goalText:
+      buildGoalText(formInput)
   };
 }
 
@@ -324,7 +341,163 @@ function buildAuditEvents(result, originalGoal) {
     time: new Date()
   }));
 }
+function updateSelectedAgentDescription() {
+  const selectedOption =
+    agentSelect.options[
+      agentSelect.selectedIndex
+    ];
 
+  if (!selectedOption ||
+      !selectedOption.value) {
+    agentDescription.textContent =
+      "Select an available AI agent.";
+
+    activeAgentName.textContent =
+      "No agent selected";
+
+    return;
+  }
+
+  const provider =
+    selectedOption.dataset.provider;
+
+  const model =
+    selectedOption.dataset.model;
+
+  agentDescription.textContent =
+    `Provider: ${provider} · Model: ${model}`;
+
+  activeAgentName.textContent =
+    selectedOption.textContent;
+}
+
+async function loadAvailableAgents() {
+  try {
+    const response =
+      await fetch("/api/agents");
+
+    if (!response.ok) {
+      throw new Error(
+        `Unable to load agents: ${response.status}`
+      );
+    }
+
+    const agents =
+      await response.json();
+
+    populateAgentDropdown(agents);
+  } catch (error) {
+    console.error(
+      "Failed to load available agents.",
+      error
+    );
+
+    agentSelect.innerHTML = `
+      <option value="">
+        Unable to load agents
+      </option>
+    `;
+
+    agentSelect.disabled = true;
+
+    agentDescription.textContent =
+      "Sentinq could not load the available agents.";
+  }
+}
+
+function populateAgentDropdown(agents) {
+  agentSelect.innerHTML = "";
+
+  if (!Array.isArray(agents) ||
+      agents.length === 0) {
+    agentSelect.innerHTML = `
+      <option value="">
+        No active agents available
+      </option>
+    `;
+
+    agentSelect.disabled = true;
+
+    agentDescription.textContent =
+      "No active agents are currently available.";
+
+    activeAgentName.textContent =
+      "No agent selected";
+
+    return;
+  }
+
+  agents.forEach(agent => {
+    const option =
+      document.createElement("option");
+
+    option.value =
+      agent.agentId;
+
+    option.textContent =
+      `${agent.agentName} — ${agent.model}`;
+
+    option.dataset.provider =
+      agent.provider;
+
+    option.dataset.model =
+      agent.model;
+
+    option.dataset.agentName =
+      agent.agentName;
+
+    agentSelect.appendChild(option);
+  });
+
+  agentSelect.disabled = false;
+
+  updateSelectedAgent();
+}
+
+function updateSelectedAgent() {
+  const selectedOption =
+    agentSelect.options[
+      agentSelect.selectedIndex
+    ];
+
+  if (!selectedOption ||
+      !selectedOption.value) {
+    agentDescription.textContent =
+      "Select an available AI agent.";
+
+    activeAgentName.textContent =
+      "No agent selected";
+
+    return;
+  }
+
+  const provider =
+    selectedOption.dataset.provider;
+
+  const model =
+    selectedOption.dataset.model;
+
+  const agentName =
+    selectedOption.dataset.agentName;
+
+  agentDescription.textContent =
+    `Provider: ${provider} · Model: ${model}`;
+
+  activeAgentName.textContent =
+    agentName;
+}
+
+agentSelect.addEventListener(
+  "change",
+  updateSelectedAgent
+);
+
+document.addEventListener(
+  "DOMContentLoaded",
+  () => {
+    loadAvailableAgents();
+  }
+);
 // -----------------------------------------------------------------------------
 // 7. Command Center rendering
 // -----------------------------------------------------------------------------
