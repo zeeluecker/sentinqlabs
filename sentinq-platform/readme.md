@@ -34,3 +34,27 @@ This validated an important aspect of the Sentinq thesis: reasoning providers sh
 
 ### Reflection
 Five days ago, Sentinq existed only as architecture diagrams and research. Today, the first implementation validates a provider-agnostic AI Control Plane capable of governing multiple reasoning engines through a shared orchestration pipeline.
+
+08/06/2026
+## Day 6 – Governed Orchestration States
+
+Today focused on strengthening Sentinq's orchestration engine and execution traceability.
+
+### Completed
+- Added persistent execution trace history with automatic refresh after every orchestration.
+- Added governance context (Principal, Agent, and Delegation) to the Mandate Envelope for end-to-end traceability.
+- Implemented structured exception handling for domain-specific orchestration outcomes.
+- Added **Clarification Required** as a first-class orchestration state.
+- Updated the Command Center to display clarification requests instead of backend errors.
+- Continued refining the Execution Explorer UI.
+
+### Key Observation
+Updating Merchant Preferences changed the reasoning engine's recommendations without changing the consumer request or reasoning model.
+
+- **Before** updating Merchant Preferences, Claude recommended a merchant explicitly marked to avoid.
+- **After** updating Merchant Preferences, Claude excluded that merchant entirely and returned different candidate merchants.
+
+This validated another important aspect of the Sentinq thesis: governed consumer context directly influences AI reasoning. The reasoning provider generates candidate options, while Sentinq's Control Plane supplies the persistent decision context that shapes those recommendations before execution.
+
+### Reflection
+Today Sentinq evolved beyond a simple request/response orchestration pipeline. The platform now supports multiple governed orchestration outcomes—including Completed, Clarification Required, and Blocked—while continuing to improve the execution traceability expected from an enterprise AI Control Plane.

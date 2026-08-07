@@ -80,7 +80,7 @@ public class ClaudeProvider
         MessageCreateParams params =
                 MessageCreateParams.builder()
                         .model(Model.CLAUDE_SONNET_5)
-                        .maxTokens(4096L)
+                        .maxTokens(8192L)
                         .addTool(webSearchTool)
                         .addUserMessage(
                                 buildProductSearchPrompt(
@@ -93,6 +93,17 @@ public class ClaudeProvider
         Message response =
                 anthropicClient.messages()
                         .create(params);
+
+        System.out.println(
+                "Claude stop reason: "
+                        + response.stopReason()
+        );
+
+        System.out.println(
+                "Claude response content: "
+                        + response.content()
+        );
+
 
         String responseText =
                 extractText(response);

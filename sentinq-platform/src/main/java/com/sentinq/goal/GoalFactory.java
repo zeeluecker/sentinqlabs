@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -95,12 +96,8 @@ public class GoalFactory {
 
         if (interpretation.clarificationQuestions != null &&
                 !interpretation.clarificationQuestions.isEmpty()) {
-            throw new IllegalStateException(
-                    "Goal requires clarification: "
-                            + String.join(
-                            "; ",
-                            interpretation.clarificationQuestions
-                    )
+            throw new GoalClarificationRequiredException(
+                    interpretation.clarificationQuestions
             );
         }
     }

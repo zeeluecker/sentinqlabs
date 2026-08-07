@@ -31,7 +31,6 @@ const PAGE_TITLES = {
   audit: "Audit Timeline",
   shop: "Shopping Agent"
 };
-
 // -----------------------------------------------------------------------------
 // 2. Cache DOM references used repeatedly
 // -----------------------------------------------------------------------------
@@ -63,6 +62,46 @@ const agentDescription =
 
 const activeAgentName =
   document.getElementById("activeAgentName");
+
+  const auditTraceList =
+    document.getElementById("auditTraceList");
+
+  const auditTraceCount =
+    document.getElementById("auditTraceCount");
+
+  const auditTraceEmpty =
+    document.getElementById("auditTraceEmpty");
+
+  const auditTraceDetail =
+    document.getElementById("auditTraceDetail");
+
+  const auditTraceTitle =
+    document.getElementById("auditTraceTitle");
+
+  const auditTraceSubtitle =
+    document.getElementById("auditTraceSubtitle");
+
+  const auditTraceStatus =
+    document.getElementById("auditTraceStatus");
+
+  const auditTraceSummary =
+    document.getElementById("auditTraceSummary");
+
+  const auditTimeline =
+    document.getElementById("auditTimeline");
+
+  const refreshAuditButton =
+    document.getElementById("refreshAuditButton");
+
+  const clarificationPanel =
+          document.getElementById(
+                  "clarificationPanel"
+          );
+
+  const clarificationQuestions =
+          document.getElementById(
+                  "clarificationQuestions"
+          );
 // -----------------------------------------------------------------------------
 // 3. Application startup and event registration
 // -----------------------------------------------------------------------------
@@ -144,34 +183,99 @@ async function checkPlatformHealth() {
  * 1. Read and validate form inputs.
  * 2. Build the API request body.
  * 3. POST it to /api/shopping/orchestrate.
- * 4. Store the returned mandate and audit information in browser state.
- * 5. Render the returned mandate, candidate carts, and execution decision.
+ * 4. Handle clarification requests when the goal is incomplete.
+ * 5. Store the returned mandate and audit information in browser state.
+ * 6. Render the returned mandate, candidate carts, and execution decision.
+ * 7. Refresh the execution history.
  */
 async function handleRunOrchestration() {
   const formInput = readShoppingForm();
 
   if (!formInput.isValid) {
-    elements.runStatus.textContent = formInput.validationMessage;
+    elements.runStatus.textContent =
+      formInput.validationMessage;
+
     return;
   }
 
-  const requestBody = buildOrchestrationRequest(formInput);
+  /*
+   * Clear any clarification state left over from
+   * a previous orchestration attempt.
+   */
+  clarificationPanel.classList.add("hidden");
+  clarificationQuestions.innerHTML = "";
+
+  const requestBody =
+    buildOrchestrationRequest(formInput);
 
   setOrchestrationLoadingState(true);
   setWorkflowProgress(2);
 
   try {
-    const result = await callShoppingOrchestration(requestBody);
+    const result =
+      await callShoppingOrchestration(
+        requestBody
+      );
 
-    recordOrchestrationResult(result, formInput.goalText);
+    /*
+     * Clarification is a valid orchestration state.
+     * Stop the normal shopping workflow and ask the
+     * consumer for the additional information Sentinq needs.
+     */
+    if (
+      result.status ===
+      "CLARIFICATION_REQUIRED"
+    ) {
+      renderClarificationRequest(
+        result.questions
+      );
+
+      elements.runStatus.textContent =
+        "Additional information required.";
+
+      setWorkflowProgress(2);
+
+      return;
+    }
+
+    /*
+     * Store and render the successfully completed
+     * shopping orchestration.
+     */
+    recordOrchestrationResult(
+      result,
+      formInput.goalText
+    );
+
     renderShoppingResult(result);
+    clarificationPanel.classList.add(
+            "hidden"
+    );
 
-    elements.shopResults.classList.remove("hidden");
-    elements.runStatus.textContent = "Orchestration complete.";
+    /*
+     * Refresh the execution history so the completed
+     * orchestration immediately appears in the Audit view.
+     */
+    await loadExecutionTraces();
+
+    elements.shopResults.classList.remove(
+      "hidden"
+    );
+
+    elements.runStatus.textContent =
+      "Orchestration complete.";
+
     setWorkflowProgress(6);
+
   } catch (error) {
-    console.error("Shopping orchestration failed", error);
-    elements.runStatus.textContent = `Request failed: ${error.message}`;
+    console.error(
+      "Shopping orchestration failed",
+      error
+    );
+
+    elements.runStatus.textContent =
+      `Request failed: ${error.message}`;
+
   } finally {
     setOrchestrationLoadingState(false);
   }
@@ -240,26 +344,56 @@ function buildGoalText(formInput) {
  *
  * The JavaScript calls one orchestration endpoint. The Spring backend then calls:
  * - MandateBuilder
- * - MockMerchantSearchService
  * - LateBindingResolutionService
  *
- * The browser receives the final combined result.
+ * Clarification-required responses are treated as a valid workflow
+ * state rather than a technical failure so the consumer can provide
+ * the missing information and continue.
  */
-async function callShoppingOrchestration(requestBody) {
-  const response = await fetch("/api/shopping/orchestrate", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(requestBody)
-  });
+async function callShoppingOrchestration(
+        requestBody
+) {
+  const response =
+      await fetch(
+          "/api/shopping/orchestrate",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(
+                requestBody
+            )
+          }
+      );
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`${response.status}: ${errorBody}`);
+  const responseBody =
+      await response.json();
+
+  /*
+   * Clarification is a valid Sentinq workflow state.
+   * Return the questions to the UI instead of throwing an error.
+   */
+  if (
+      response.status === 422 &&
+      responseBody.status ===
+      "CLARIFICATION_REQUIRED"
+  ) {
+    return responseBody;
   }
 
-  return response.json();
+  /*
+   * Any other non-success response represents an
+   * actual orchestration or platform failure.
+   */
+  if (!response.ok) {
+    throw new Error(
+        responseBody.message ||
+        "Sentinq could not complete the request."
+    );
+  }
+
+  return responseBody;
 }
 
 function setOrchestrationLoadingState(isLoading) {
@@ -498,6 +632,8 @@ document.addEventListener(
     loadAvailableAgents();
   }
 );
+
+
 // -----------------------------------------------------------------------------
 // 7. Command Center rendering
 // -----------------------------------------------------------------------------
@@ -582,6 +718,615 @@ function setWorkflowProgress(completedStepCount) {
     item.classList.toggle("complete", index < completedStepCount);
   });
 }
+
+/**
+ * Displays the clarification questions returned
+ * by Sentinq when additional consumer input is
+ * required before a mandate can be created.
+ */
+function renderClarificationRequest(
+        questions
+) {
+
+    clarificationQuestions.innerHTML =
+            questions.map(question => `
+                <div class="clarification-question">
+
+                    <span>•</span>
+
+                    <p>
+                        ${escapeHtml(question)}
+                    </p>
+
+                </div>
+            `).join("");
+
+    clarificationPanel.classList.remove(
+            "hidden"
+    );
+}
+/**
+ * Holds every execution trace retrieved from the Sentinq backend.
+ *
+ * Each trace represents one complete shopping orchestration,
+ * including every interaction, provider call, governance
+ * decision, and execution outcome.
+ */
+let executionTraces = [];
+
+/**
+ * Tracks the execution trace currently being viewed in the
+ * Command Center.
+ *
+ * When the user selects another orchestration, this value
+ * determines which trace is rendered in the detail panel.
+ */
+let selectedTraceId = null;
+
+/**
+ * Retrieves every execution trace from the Sentinq backend.
+ *
+ * After the traces are loaded, the execution history list is
+ * refreshed and the currently selected trace (or the newest
+ * trace) is displayed in the Execution Explorer.
+ */
+async function loadExecutionTraces() {
+  try {
+    const response =
+      await fetch("/api/audit/traces");
+
+    if (!response.ok) {
+      throw new Error(
+        `Unable to load execution traces: ${response.status}`
+      );
+    }
+
+    executionTraces =
+      await response.json();
+
+    renderExecutionTraceList(
+      executionTraces
+    );
+
+    if (executionTraces.length === 0) {
+      showEmptyTraceDetail();
+      return;
+    }
+
+    const selectedTrace =
+      executionTraces.find(
+        trace =>
+          trace.traceId === selectedTraceId
+      ) || executionTraces[0];
+
+    renderExecutionTraceDetail(
+      selectedTrace
+    );
+  } catch (error) {
+    console.error(
+      "Failed to load execution traces.",
+      error
+    );
+
+    auditTraceList.innerHTML = `
+      <div class="audit-empty-state">
+        <strong>Unable to load traces</strong>
+        <p>
+          Sentinq could not retrieve the execution history.
+        </p>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Renders every recorded orchestration as a compact, selectable
+ * execution-history row.
+ *
+ * The history list is intentionally dense so that the selected
+ * trace remains the primary focus of the Execution Explorer.
+ */
+function renderExecutionTraceList(
+        traces
+) {
+    auditTraceCount.textContent =
+            `${traces.length}`;
+
+    if (!Array.isArray(traces) ||
+            traces.length === 0) {
+
+        auditTraceList.innerHTML = `
+            <div class="audit-empty-state">
+                <strong>No execution traces yet</strong>
+                <p>
+                    Run the Shopping Agent to create the first trace.
+                </p>
+            </div>
+        `;
+
+        return;
+    }
+
+    auditTraceList.innerHTML =
+            traces.map(trace => {
+                const isSelected =
+                        trace.traceId === selectedTraceId;
+
+                const provider =
+                        formatProviderName(
+                                trace.provider
+                        );
+
+                const model =
+                        trace.model || "Unknown model";
+
+                const timestamp =
+                        formatTraceDate(
+                                trace.startedAt
+                        );
+
+                const interactionCount =
+                        trace.events?.length || 0;
+
+                return `
+                    <button
+                            type="button"
+                            class="audit-trace-row ${
+                                    isSelected
+                                            ? "active"
+                                            : ""
+                            }"
+                            data-trace-id="${trace.traceId}"
+                    >
+                        <span
+                                class="audit-trace-status-dot ${
+                                        trace.completedAt
+                                            ? "complete"
+                                            : "in-progress"
+                                }"
+                                aria-hidden="true"
+                        ></span>
+
+                        <span class="audit-trace-main">
+                            <strong>
+                                ${provider}
+                            </strong>
+
+                            <span>
+                                ${model}
+                            </span>
+                        </span>
+
+                        <span class="audit-trace-meta">
+                            <time>
+                                ${timestamp}
+                            </time>
+
+                            <span>
+                                ${interactionCount}
+                                ${
+                                    interactionCount === 1
+                                        ? "interaction"
+                                        : "interactions"
+                                }
+                            </span>
+                        </span>
+                    </button>
+                `;
+            }).join("");
+
+    auditTraceList
+            .querySelectorAll(
+                    "[data-trace-id]"
+            )
+            .forEach(button => {
+                button.addEventListener(
+                        "click",
+                        () => {
+                            selectedTraceId =
+                                    button.dataset.traceId;
+
+                            const selectedTrace =
+                                    executionTraces.find(
+                                            trace =>
+                                                    trace.traceId ===
+                                                    selectedTraceId
+                                    );
+
+                            renderExecutionTraceList(
+                                    executionTraces
+                            );
+
+                            renderExecutionTraceDetail(
+                                    selectedTrace
+                            );
+                        }
+                );
+            });
+}
+
+/**
+ * Displays the details for a single execution trace.
+ *
+ * The selected orchestration becomes the active trace in the
+ * Execution Explorer, allowing the user to inspect the
+ * execution summary and every interaction recorded during
+ * the workflow.
+ */
+function renderExecutionTraceDetail(
+  trace
+) {
+  if (!trace) {
+    showEmptyTraceDetail();
+    return;
+  }
+
+  selectedTraceId =
+    trace.traceId;
+
+  auditTraceEmpty.classList.add(
+    "hidden"
+  );
+
+  auditTraceDetail.classList.remove(
+    "hidden"
+  );
+
+  const provider =
+    formatProviderName(
+      trace.provider
+    );
+
+  auditTraceTitle.textContent =
+    `${provider} shopping orchestration`;
+
+  auditTraceSubtitle.textContent =
+    `Trace ${trace.traceId}`;
+
+  auditTraceStatus.textContent =
+    trace.completedAt
+      ? "Completed"
+      : "In progress";
+
+  auditTraceStatus.className =
+    trace.completedAt
+      ? "badge badge-success"
+      : "badge";
+
+  renderTraceSummary(trace);
+  renderTraceEvents(trace.events || []);
+}
+
+/**
+ * Builds the execution summary displayed at the top of the
+ * selected trace.
+ *
+ * The summary provides a high-level view of the orchestration,
+ * including the reasoning provider, model, execution time,
+ * and the number of interactions recorded.
+ */
+function renderTraceSummary(
+  trace
+) {
+  auditTraceSummary.innerHTML = `
+    <div class="summary-item">
+      <span>Provider</span>
+      <strong>
+        ${formatProviderName(trace.provider)}
+      </strong>
+    </div>
+
+    <div class="summary-item">
+      <span>Model</span>
+      <strong>
+        ${trace.model || "Unknown"}
+      </strong>
+    </div>
+
+    <div class="summary-item">
+      <span>Started</span>
+      <strong>
+        ${formatTraceDate(trace.startedAt)}
+      </strong>
+    </div>
+
+    <div class="summary-item">
+      <span>Interactions</span>
+      <strong>
+        ${trace.events?.length || 0}
+      </strong>
+    </div>
+  `;
+}
+
+/**
+ * Renders the complete execution timeline for the selected
+ * orchestration.
+ *
+ * Each event represents a significant interaction performed
+ * by Sentinq, allowing users to follow the execution flow
+ * from request initiation through final decision.
+ */
+function renderTraceEvents(
+  events
+) {
+  if (!Array.isArray(events) ||
+      events.length === 0) {
+    auditTimeline.innerHTML = `
+      <div class="audit-empty-state">
+        <strong>No interactions recorded</strong>
+      </div>
+    `;
+
+    return;
+  }
+
+  auditTimeline.innerHTML =
+    events.map(event => `
+      <div class="audit-event">
+        <span class="audit-dot"></span>
+
+        <div class="audit-event-content">
+          <div class="audit-event-heading">
+            <strong>
+              ${getAuditEventTitle(
+                event.eventType
+              )}
+            </strong>
+
+            <time>
+              ${formatEventTime(
+                event.timestamp
+              )}
+            </time>
+          </div>
+
+          <p>
+            ${event.summary || ""}
+          </p>
+
+          <div class="audit-event-meta">
+            <span>
+              ${formatComponentName(
+                event.component
+              )}
+            </span>
+          </div>
+
+          ${
+            event.details
+              ? `
+                <details class="audit-event-details">
+                  <summary>
+                    View interaction data
+                  </summary>
+
+                  <pre>${escapeHtml(
+                    JSON.stringify(
+                      event.details,
+                      null,
+                      2
+                    )
+                  )}</pre>
+                </details>
+              `
+              : ""
+          }
+        </div>
+      </div>
+    `).join("");
+}
+
+/**
+ * Converts internal audit event identifiers into
+ * consumer-friendly descriptions.
+ *
+ * Internal event names are intentionally decoupled from
+ * presentation text so that the audit experience remains
+ * understandable without exposing implementation details.
+ */
+function getAuditEventTitle(
+  eventType
+) {
+  const titles = {
+    REQUEST_RECEIVED:
+      "Shopping request received",
+
+    PRINCIPAL_LOADED:
+      "Principal identity confirmed",
+
+    AGENT_SELECTED:
+      "Reasoning agent selected",
+
+    DELEGATION_VALIDATED:
+      "Shopping authority validated",
+
+    PREFERENCES_LOADED:
+      "Consumer preferences applied",
+
+    GOAL_INTERPRETED:
+      "Shopping goal interpreted",
+
+    MANDATE_CREATED:
+      "Mandate Envelope created",
+
+    SEARCH_REQUEST_SENT:
+      "Merchant search initiated",
+
+    CANDIDATES_RECEIVED:
+      "Merchant candidates received",
+
+    CANDIDATES_RESOLVED:
+      "Candidates evaluated",
+
+    FINAL_DECISION:
+      "Final decision produced",
+
+    ORCHESTRATION_FAILED:
+      "Orchestration failed"
+  };
+
+  return titles[eventType] ||
+    formatComponentName(eventType);
+}
+
+function formatProviderName(
+  provider
+) {
+  const names = {
+    openai: "OpenAI",
+    claude: "Claude",
+    gemini: "Gemini"
+  };
+
+  return names[
+    provider?.toLowerCase()
+  ] || provider || "Unknown provider";
+}
+
+function formatComponentName(
+  value
+) {
+  if (!value) {
+    return "";
+  }
+
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .trim();
+}
+
+/**
+ * Converts an execution timestamp into a compact,
+ * human-friendly value for the trace-history list.
+ *
+ * Runs from today and yesterday are labeled relative to the
+ * current date; older executions display a short date.
+ */
+function formatTraceDate(
+        timestamp
+) {
+    if (!timestamp) {
+        return "Unknown";
+    }
+
+    const traceDate =
+            new Date(timestamp);
+
+    const now =
+            new Date();
+
+    const traceDay =
+            new Date(
+                    traceDate.getFullYear(),
+                    traceDate.getMonth(),
+                    traceDate.getDate()
+            );
+
+    const today =
+            new Date(
+                    now.getFullYear(),
+                    now.getMonth(),
+                    now.getDate()
+            );
+
+    const dayDifference =
+            Math.round(
+                    (
+                            today.getTime() -
+                            traceDay.getTime()
+                    ) /
+                    86400000
+            );
+
+    const time =
+            traceDate.toLocaleTimeString(
+                    [],
+                    {
+                        hour: "numeric",
+                        minute: "2-digit"
+                    }
+            );
+
+    if (dayDifference === 0) {
+        return `Today · ${time}`;
+    }
+
+    if (dayDifference === 1) {
+        return `Yesterday · ${time}`;
+    }
+
+    return traceDate.toLocaleDateString(
+            [],
+            {
+                month: "short",
+                day: "numeric",
+                year:
+                        traceDate.getFullYear() !==
+                        now.getFullYear()
+                                ? "numeric"
+                                : undefined
+            }
+    );
+}
+/**
+ * Converts an audit-event timestamp into a readable time
+ * for the execution timeline.
+ *
+ * Events within a trace occur during the same orchestration,
+ * so the timeline displays the precise time—including
+ * seconds—without repeating the full calendar date.
+ */
+function formatEventTime(
+        timestamp
+) {
+    if (!timestamp) {
+        return "";
+    }
+
+    return new Date(
+            timestamp
+    ).toLocaleTimeString(
+            [],
+            {
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit"
+            }
+    );
+}
+
+function escapeHtml(
+  value
+) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function showEmptyTraceDetail() {
+  selectedTraceId = null;
+
+  auditTraceEmpty.classList.remove(
+    "hidden"
+  );
+
+  auditTraceDetail.classList.add(
+    "hidden"
+  );
+}
+
+refreshAuditButton.addEventListener(
+  "click",
+  loadExecutionTraces
+);
+
+
+
 
 // -----------------------------------------------------------------------------
 // 8. Shopping result rendering

@@ -57,10 +57,112 @@
         <div id="mandateList" class="mandate-list hidden"></div>
       </section>
 
-      <section class="view" id="auditView">
-        <div class="section-heading"><div><p class="eyebrow">TRACEABILITY</p><h2>Audit timeline</h2></div></div>
-        <article class="panel"><div id="auditTimeline" class="audit-timeline"><div class="audit-event"><span class="audit-dot"></span><div><strong>Sentinq platform ready</strong><p>Awaiting the first delegated shopping goal.</p><time>Now</time></div></div></div></article>
-      </section>
+        <section class="view" id="auditView">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">TRACEABILITY</p>
+                    <h2>Execution traces</h2>
+
+                    <p class="section-copy">
+                        Review every orchestration and inspect each interaction,
+                        transformation, provider call, and decision made by Sentinq.
+                    </p>
+                </div>
+
+                <button
+                        id="refreshAuditButton"
+                        class="secondary-button"
+                        type="button"
+                >
+                    Refresh traces
+                </button>
+            </div>
+
+            <div class="audit-layout">
+                <aside class="panel audit-trace-panel">
+                    <div class="panel-heading">
+                        <div>
+                            <p class="eyebrow">ORCHESTRATIONS</p>
+                            <h3>
+                                Execution history
+                                <span id="auditTraceCount" class="audit-heading-count">
+        0
+                                </span>
+                            </h3>
+                        </div>
+                    </div>
+
+                    <div
+                            id="auditTraceList"
+                            class="audit-trace-list"
+                    >
+                        <div class="audit-empty-state">
+                            <strong>No execution traces yet</strong>
+                            <p>
+                                Run the Shopping Agent to create the first trace.
+                            </p>
+                        </div>
+                    </div>
+                </aside>
+
+                <article class="panel audit-detail-panel">
+                    <div id="auditTraceEmpty">
+                        <div class="empty-state audit-detail-empty">
+                            <div class="empty-icon">T</div>
+
+                            <h3>Select an execution trace</h3>
+
+                            <p>
+                                Choose an orchestration to inspect every action
+                                Sentinq performed.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div
+                            id="auditTraceDetail"
+                            class="hidden"
+                    >
+                        <div class="audit-trace-header">
+                            <div>
+                                <p class="eyebrow">EXECUTION TRACE</p>
+                                <h3 id="auditTraceTitle">
+                                    Shopping orchestration
+                                </h3>
+                                <p
+                                        id="auditTraceSubtitle"
+                                        class="audit-trace-subtitle"
+                                ></p>
+                            </div>
+
+                            <span
+                                    id="auditTraceStatus"
+                                    class="badge"
+                            >
+                            Completed
+                            </span>
+                        </div>
+
+                        <div
+                                id="auditTraceSummary"
+                                class="audit-summary-grid"
+                        ></div>
+
+                        <div class="audit-section-heading">
+                            <div>
+                                <p class="eyebrow">INTERACTIONS</p>
+                                <h3>Execution timeline</h3>
+                            </div>
+                        </div>
+
+                        <div
+                                id="auditTimeline"
+                                class="audit-timeline"
+                        ></div>
+                    </div>
+                </article>
+            </div>
+        </section>
 
         <section class="view" id="shopView">
             <div class="shop-layout">
@@ -106,10 +208,31 @@
                             Shopping goal
                         </label>
 
-                        <textarea id="goalInput" rows="6">
-Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.
-        </textarea>
+                        <textarea id="goalInput" rows="6" >Find me a dahlia that will look good next to my passion fruit vine. I will plant it in a container. It should be delivered before the end of August 2026. I do not want to spend more than $50.
+                        </textarea>
 
+                        <div
+                                id="clarificationPanel"
+                                class="clarification-panel hidden">
+
+                            <p class="eyebrow">
+                                CLARIFICATION REQUIRED
+                            </p>
+
+                            <h3>
+                                Sentinq needs more information
+                            </h3>
+
+                            <p class="section-copy">
+                                Before creating a governed mandate,
+                                the following questions need to be answered.
+                            </p>
+
+                            <div
+                                    id="clarificationQuestions">
+                            </div>
+
+                        </div>
                         <div class="form-grid">
                             <div>
                                 <label for="budgetInput">

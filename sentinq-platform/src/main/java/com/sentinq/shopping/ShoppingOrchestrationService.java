@@ -11,6 +11,11 @@ import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.LateBindingResolutionService;
 import com.sentinq.resolution.ResolutionResult;
 import org.springframework.stereotype.Service;
+import com.sentinq.audit.AuditEventType;
+import com.sentinq.audit.AuditService;
+import com.sentinq.audit.ExecutionTrace;
+
+import java.util.Map;
 
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -22,7 +27,6 @@ public class ShoppingOrchestrationService {
 
     private final MandateBuilder mandateBuilder;
     private final LateBindingResolutionService resolutionService;
-    private final MockMerchantSearchService merchantSearchService;
     private final PrincipalService principalService;
     private final AgentIdentityService agentIdentityService;
     private final AgentDelegationService agentDelegationService;
@@ -31,6 +35,7 @@ public class ShoppingOrchestrationService {
     private final GoalFactory goalFactory;
     private final ProductSearchService productSearchService;
     private final CandidateOfferFactory candidateOfferFactory;
+    private final AuditService auditService;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -43,12 +48,12 @@ public class ShoppingOrchestrationService {
             GoalInterpretationService goalInterpretationService,
             GoalFactory goalFactory,
             ProductSearchService productSearchService,
-            CandidateOfferFactory candidateOfferFactory
+            CandidateOfferFactory candidateOfferFactory,
+            AuditService auditService
 
     ) {
         this.mandateBuilder = mandateBuilder;
         this.resolutionService = resolutionService;
-        this.merchantSearchService = merchantSearchService;
         this.principalService = principalService;
         this.agentIdentityService = agentIdentityService;
         this.agentDelegationService = agentDelegationService;
@@ -57,20 +62,58 @@ public class ShoppingOrchestrationService {
         this.goalFactory = goalFactory;
         this.productSearchService = productSearchService;
         this.candidateOfferFactory = candidateOfferFactory;
+        this.auditService = auditService;
     }
 
     public ShoppingOrchestrationResult orchestrate(
             ShoppingGoalRequest request
     ) {
+        ExecutionTrace trace =
+                auditService.startTrace(
+                        request.principalId(),
+                        request.agentId()
+                );
+
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.REQUEST_RECEIVED,
+                "ShoppingOrchestrationService",
+                "Shopping orchestration request received.",
+                request
+        );
+
         Principal principal =
                 principalService.findById(
                         request.principalId()
                 );
 
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.PRINCIPAL_LOADED,
+                "PrincipalService",
+                "Principal identity loaded.",
+                principal
+        );
+
         AgentIdentity agent =
                 agentIdentityService.findById(
                         request.agentId()
                 );
+
+        auditService.setProviderDetails(
+                trace.getTraceId(),
+                agent.getProvider(),
+                agent.getModel()
+        );
+
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.AGENT_SELECTED,
+                "AgentIdentityService",
+                "Agent and reasoning provider selected.",
+                agent
+        );
+
 
         AgentDelegation delegation =
                 agentDelegationService.findActiveDelegation(
@@ -78,16 +121,40 @@ public class ShoppingOrchestrationService {
                         agent.getAgentId()
                 );
 
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.DELEGATION_VALIDATED,
+                "AgentDelegationService",
+                "Active delegation validated.",
+                delegation
+        );
+
+
         ConsumerPreferences preferences =
                 consumerPreferencesService.findByPrincipalId(
                         principal.getPrincipalId()
                 );
+
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.PREFERENCES_LOADED,
+                "ConsumerPreferencesService",
+                "Scoped consumer and merchant preferences loaded.",
+                preferences
+        );
 
         InterpretedShoppingGoal interpretation =
                 goalInterpretationService.interpret(
                         agent.getProvider(),
                         request.goalText()
                 );
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.GOAL_INTERPRETED,
+                "GoalInterpretationService",
+                "Natural-language goal interpreted.",
+                interpretation
+        );
 
         Goal goal =
                 goalFactory.create(
@@ -119,12 +186,41 @@ public class ShoppingOrchestrationService {
                 delegation.getDelegationId()
         );
 
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.MANDATE_CREATED,
+                "MandateBuilder",
+                "Governed Mandate Envelope created.",
+                mandate
+        );
+
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.SEARCH_REQUEST_SENT,
+                "ProductSearchService",
+                "Governed search context sent to the selected provider.",
+                Map.of(
+                        "provider", agent.getProvider(),
+                        "model", agent.getModel(),
+                        "goal", goal,
+                        "preferences", preferences,
+                        "mandate", mandate
+                )
+        );
         ProductSearchResult searchResult =
                 productSearchService.search(
                         agent.getProvider(),
                         goal,
                         preferences
                 );
+
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.CANDIDATES_RECEIVED,
+                "ProductSearchService",
+                "Merchant candidates returned by provider.",
+                searchResult
+        );
 
         List<CandidateOffer> candidates =
                 searchResult.offers.stream()
@@ -140,6 +236,13 @@ public class ShoppingOrchestrationService {
                                 )
                         )
                         .toList();
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.CANDIDATES_RESOLVED,
+                "LateBindingResolutionService",
+                "Candidate offers evaluated against the mandate.",
+                resolvedCandidates
+        );
 
         Optional<ResolvedCandidate> selectedCandidate =
                 resolvedCandidates.stream()
@@ -149,12 +252,28 @@ public class ShoppingOrchestrationService {
                                         this::resolvedTotal
                                 )
                         );
+        ShoppingOrchestrationResult result =
+                new ShoppingOrchestrationResult(
+                        mandate,
+                        resolvedCandidates,
+                        selectedCandidate.orElse(null)
+                );
 
-        return new ShoppingOrchestrationResult(
-                mandate,
-                resolvedCandidates,
-                selectedCandidate.orElse(null)
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.FINAL_DECISION,
+                "ShoppingOrchestrationService",
+                selectedCandidate.isPresent()
+                        ? "Executable candidate selected."
+                        : "No executable candidate was found.",
+                result
         );
+
+        auditService.completeTrace(
+                trace.getTraceId()
+        );
+
+        return result;
     }
 
     private ResolvedCandidate resolveCandidate(
