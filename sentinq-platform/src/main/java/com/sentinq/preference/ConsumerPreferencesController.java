@@ -6,9 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping(
-        "/api/principals/{principalId}/preferences"
-)
+@RequestMapping("/api/preferences")
 public class ConsumerPreferencesController {
 
     private final ConsumerPreferencesService
@@ -22,7 +20,7 @@ public class ConsumerPreferencesController {
                 consumerPreferencesService;
     }
 
-    @GetMapping
+    @GetMapping("/{principalId}")
     public ConsumerPreferences getPreferences(
             @PathVariable UUID principalId
     ) {
@@ -32,7 +30,11 @@ public class ConsumerPreferencesController {
                 );
     }
 
-    @PutMapping
+    /**
+     * Persists the latest Consumer Preferences entered
+     * through the Command Center.
+     */
+    @PutMapping("/{principalId}")
     public ConsumerPreferences updatePreferences(
             @PathVariable UUID principalId,
             @RequestBody
@@ -44,8 +46,10 @@ public class ConsumerPreferencesController {
         );
     }
 
-    @DeleteMapping
-    @ResponseStatus(HttpStatus.NO_CONTENT)
+    /**
+     * Deletes the saved Consumer Preferences for the requested principal.
+     */
+    @DeleteMapping("/{principalId}")
     public void deletePreferences(
             @PathVariable UUID principalId
     ) {

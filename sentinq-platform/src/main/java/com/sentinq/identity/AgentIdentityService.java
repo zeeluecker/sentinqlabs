@@ -1,5 +1,8 @@
 package com.sentinq.identity;
 
+import com.sentinq.ai.provider.ClaudeProvider;
+import com.sentinq.ai.provider.GeminiProvider;
+import com.sentinq.ai.provider.OpenAiProvider;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
@@ -35,7 +38,7 @@ public class AgentIdentityService {
         );
 
         openAiAgent.setModel(
-                "gpt-5.2"
+                OpenAiProvider.MODEL
         );
 
         openAiAgent.setActive(true);
@@ -63,14 +66,45 @@ public class AgentIdentityService {
         );
 
         claudeAgent.setModel(
-                "claude-sonnet-5"
+                ClaudeProvider.MODEL
         );
 
         claudeAgent.setActive(true);
 
+
         agents.put(
                 claudeAgent.getAgentId(),
                 claudeAgent
+        );
+
+        AgentIdentity geminiAgent =
+                new AgentIdentity();
+
+        geminiAgent.setAgentId(
+                UUID.fromString(
+                        "44444444-4444-4444-4444-444444444444"
+                )
+        );
+
+        geminiAgent.setAgentName(
+                "Sentinq Shopping Agent (Gemini)"
+        );
+
+        geminiAgent.setProvider(
+                "gemini"
+        );
+
+        geminiAgent.setModel(
+                GeminiProvider.MODEL
+        );
+
+        geminiAgent.setActive(
+                true
+        );
+
+        agents.put(
+                geminiAgent.getAgentId(),
+                geminiAgent
         );
     }
 

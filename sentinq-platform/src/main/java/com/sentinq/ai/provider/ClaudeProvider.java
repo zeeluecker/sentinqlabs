@@ -20,6 +20,8 @@ public class ClaudeProvider
 
     private final AnthropicClient anthropicClient;
     private final ObjectMapper objectMapper;
+    public static final String MODEL =
+            Model.CLAUDE_SONNET_5.toString();
 
     public ClaudeProvider(
             ObjectMapper objectMapper
@@ -43,7 +45,7 @@ public class ClaudeProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(Model.CLAUDE_SONNET_5)
+                        .model(MODEL)
                         .maxTokens(1024L)
                         .addUserMessage(
                                 buildPrompt(rawGoalText)
@@ -79,7 +81,7 @@ public class ClaudeProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(Model.CLAUDE_SONNET_5)
+                        .model(MODEL)
                         .maxTokens(8192L)
                         .addTool(webSearchTool)
                         .addUserMessage(

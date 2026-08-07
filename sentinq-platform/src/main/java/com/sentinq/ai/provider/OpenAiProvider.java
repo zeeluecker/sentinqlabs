@@ -18,6 +18,7 @@ public class OpenAiProvider
         implements LlmProvider, ProductSearchProvider {
 
     private final OpenAIClient openAIClient;
+    public static final String MODEL = ChatModel.GPT_5_2.toString();
 
     public OpenAiProvider() {
         this.openAIClient =
@@ -35,7 +36,7 @@ public class OpenAiProvider
     ) {
         StructuredResponseCreateParams<InterpretedShoppingGoal> params =
                 ResponseCreateParams.builder()
-                        .model(ChatModel.GPT_5_2)
+                        .model(MODEL)
                         .input(buildPrompt(rawGoalText))
                         .text(InterpretedShoppingGoal.class)
                         .build();
@@ -74,7 +75,7 @@ public class OpenAiProvider
 
         StructuredResponseCreateParams<ProductSearchResult> params =
                 ResponseCreateParams.builder()
-                        .model(ChatModel.GPT_5_2)
+                        .model(MODEL)
                         .input(
                                 buildProductSearchPrompt(
                                         goal,

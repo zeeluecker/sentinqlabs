@@ -18,6 +18,15 @@
 // 1. Browser-only demo state
 // -----------------------------------------------------------------------------
 
+/**
+ * Demo principal used throughout the current MVP.
+ *
+ * Later this will come from authentication or
+ * the active signed-in consumer.
+ */
+const PRINCIPAL_ID =
+    "11111111-1111-1111-1111-111111111111";
+
 const appState = {
   mandates: [],
   auditEvents: [],
@@ -102,6 +111,46 @@ const activeAgentName =
           document.getElementById(
                   "clarificationQuestions"
           );
+
+          const preferredMerchantsInput =
+              document.getElementById(
+                  "preferredMerchantsInput"
+              );
+
+          const avoidedMerchantsInput =
+              document.getElementById(
+                  "avoidedMerchantsInput"
+              );
+
+          const minimumReviewScoreInput =
+              document.getElementById(
+                  "minimumReviewScoreInput"
+              );
+
+          const minimumFulfillmentScoreInput =
+              document.getElementById(
+                  "minimumFulfillmentScoreInput"
+              );
+
+          const askBeforeNewMerchantInput =
+              document.getElementById(
+                  "askBeforeNewMerchantInput"
+              );
+
+          const savePreferencesButton =
+              document.getElementById(
+                  "savePreferencesButton"
+              );
+
+          const preferencesStatus =
+              document.getElementById(
+                  "preferencesStatus"
+              );
+
+const connectedAgentsList =
+        document.getElementById(
+                "connectedAgentsList"
+        );
 // -----------------------------------------------------------------------------
 // 3. Application startup and event registration
 // -----------------------------------------------------------------------------
@@ -148,6 +197,175 @@ function switchView(viewName) {
 
   elements.pageTitle.textContent = PAGE_TITLES[viewName] ?? "Sentinq";
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/**
+ * Loads the current Consumer Preferences for the active principal
+ * and populates the Command Center preference form.
+ */
+async function loadConsumerPreferences() {
+  try {
+    const response =
+        await fetch(
+            `/api/preferences/${PRINCIPAL_ID}`
+        );
+
+    if (!response.ok) {
+      throw new Error(
+          "Unable to load consumer preferences."
+      );
+    }
+
+    const preferences =
+        await response.json();
+
+    preferredMerchantsInput.value =
+        (
+            preferences.preferredMerchants ||
+            []
+        ).join("\n");
+
+    avoidedMerchantsInput.value =
+        (
+            preferences.avoidedMerchants ||
+            []
+        ).join("\n");
+
+    minimumReviewScoreInput.value =
+        preferences.preferredMinimumReviewScore ??
+        "";
+
+    minimumFulfillmentScoreInput.value =
+        preferences.preferredMinimumFulfillmentScore ??
+        "";
+
+    askBeforeNewMerchantInput.checked =
+        Boolean(
+            preferences.askBeforeUsingNewMerchant
+        );
+
+  } catch (error) {
+    console.error(
+        "Failed to load Consumer Preferences.",
+        error
+    );
+
+    preferencesStatus.textContent =
+        "Unable to load preferences.";
+  }
+}
+
+/**
+ * Renders every active AI agent registered with Sentinq.
+ *
+ * Agent identity and provider metadata come from the backend
+ * so the Connected Agents view always reflects the actual
+ * runtime configuration rather than hardcoded UI content.
+ */
+function renderConnectedAgents(
+        agents
+) {
+    if (!Array.isArray(agents) ||
+            agents.length === 0) {
+
+        connectedAgentsList.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">AI</div>
+                <h3>No connected agents</h3>
+                <p>
+                    Sentinq does not currently have any active
+                    AI agents registered.
+                </p>
+            </div>
+        `;
+
+        return;
+    }
+
+    connectedAgentsList.innerHTML =
+            agents.map(agent => `
+                <article class="panel agent-card">
+
+                    <div class="agent-header">
+                        <div class="agent-icon">
+                            AI
+                        </div>
+
+                        <div>
+                            <h3>
+                                ${escapeHtml(
+                                    agent.agentName
+                                )}
+                            </h3>
+
+                            <p>
+                                ${escapeHtml(
+                                    formatProviderName(
+                                        agent.provider
+                                    )
+                                )}
+                                ·
+                                ${escapeHtml(
+                                    agent.model ||
+                                    "Model not specified"
+                                )}
+                                ·
+                                Shopping orchestration
+                            </p>
+                        </div>
+
+                        <span class="badge badge-success">
+                            Active
+                        </span>
+                    </div>
+
+                    <div class="permission-grid">
+
+                        <div>
+                            <h4>Permitted</h4>
+
+                            <ul class="permission-list allowed">
+                                <li>
+                                    Interpret shopping goals
+                                </li>
+                                <li>
+                                    Read scoped consumer preferences
+                                </li>
+                                <li>
+                                    Search merchant offers
+                                </li>
+                                <li>
+                                    Request late-binding resolution
+                                </li>
+                                <li>
+                                    Build candidate carts
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div>
+                            <h4>Restricted</h4>
+
+                            <ul class="permission-list denied">
+                                <li>
+                                    Read raw payment credentials
+                                </li>
+                                <li>
+                                    Execute without approval
+                                </li>
+                                <li>
+                                    Change consumer preferences
+                                </li>
+                                <li>
+                                    Exceed mandate authority
+                                </li>
+                            </ul>
+                        </div>
+
+                    </div>
+
+                </article>
+            `).join("");
 }
 
 // -----------------------------------------------------------------------------
@@ -505,6 +723,13 @@ function updateSelectedAgentDescription() {
     selectedOption.textContent;
 }
 
+/**
+ * Loads every AI agent currently registered with Sentinq.
+ *
+ * The returned agent identities are used by both the
+ * Shopping Agent selector and the Connected AI Agents
+ * dashboard to ensure both views remain synchronized.
+ */
 async function loadAvailableAgents() {
   try {
     const response =
@@ -519,7 +744,14 @@ async function loadAvailableAgents() {
     const agents =
       await response.json();
 
-    populateAgentDropdown(agents);
+    populateAgentDropdown(
+      agents
+    );
+
+    renderConnectedAgents(
+      agents
+    );
+
   } catch (error) {
     console.error(
       "Failed to load available agents.",
@@ -536,6 +768,17 @@ async function loadAvailableAgents() {
 
     agentDescription.textContent =
       "Sentinq could not load the available agents.";
+
+    connectedAgentsList.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">AI</div>
+        <h3>Unable to load connected agents</h3>
+        <p>
+          Sentinq could not retrieve the registered
+          AI agents.
+        </p>
+      </div>
+    `;
   }
 }
 
@@ -633,10 +876,123 @@ document.addEventListener(
   }
 );
 
+/**
+ * Persists the Consumer Preferences entered through the
+ * Command Center so future orchestrations use the latest
+ * consumer-defined merchant and fulfillment context.
+ */
+async function saveConsumerPreferences() {
 
+  const preferences = {
+    preferredMerchants:
+        parseMerchantList(
+            preferredMerchantsInput.value
+        ),
+
+    avoidedMerchants:
+        parseMerchantList(
+            avoidedMerchantsInput.value
+        ),
+
+    preferredMinimumReviewScore:
+        parseOptionalNumber(
+            minimumReviewScoreInput.value
+        ),
+
+    preferredMinimumFulfillmentScore:
+        parseOptionalNumber(
+            minimumFulfillmentScoreInput.value
+        ),
+
+    askBeforeUsingNewMerchant:
+        askBeforeNewMerchantInput.checked
+  };
+
+  try {
+    preferencesStatus.textContent =
+        "Saving preferences...";
+
+    const response =
+        await fetch(
+            `/api/preferences/${PRINCIPAL_ID}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type":
+                    "application/json"
+              },
+              body:
+                  JSON.stringify(
+                      preferences
+                  )
+            }
+        );
+
+    if (!response.ok) {
+      throw new Error(
+          "Unable to save consumer preferences."
+      );
+    }
+
+    preferencesStatus.textContent =
+        "Consumer preferences saved.";
+
+  } catch (error) {
+    console.error(
+        "Failed to save Consumer Preferences.",
+        error
+    );
+
+    preferencesStatus.textContent =
+        "Unable to save preferences.";
+  }
+}
 // -----------------------------------------------------------------------------
 // 7. Command Center rendering
 // -----------------------------------------------------------------------------
+/**
+ * Converts a multiline merchant input into a normalized
+ * merchant-name list used by Sentinq.
+ */
+function parseMerchantList(
+    value
+) {
+  if (!value) {
+    return [];
+  }
+
+  return value
+      .split("\n")
+      .map(merchant =>
+          merchant.trim()
+      )
+      .filter(merchant =>
+          merchant.length > 0
+      );
+}
+
+
+/**
+ * Converts an optional numeric form value into a number while
+ * preserving null when the consumer has not set a threshold.
+ */
+function parseOptionalNumber(
+    value
+) {
+  if (value === null ||
+      value === undefined ||
+      value.trim() === "") {
+    return null;
+  }
+
+  return Number(value);
+}
+
+savePreferencesButton.addEventListener(
+    "click",
+    saveConsumerPreferences
+);
+loadConsumerPreferences();
 
 function refreshCommandCenter() {
   const mandateCount = appState.mandates.length;
@@ -664,22 +1020,363 @@ function renderMandateList() {
     .join("");
 }
 
-function createMandateListItemHtml(mandate) {
+/**
+ * Builds the Command Center HTML for a synthesized Mandate Envelope.
+ *
+ * The mandate summary includes the consumer goal, hard constraints,
+ * and the merchant-governance context that was active when the
+ * mandate was created.
+ */
+function createMandateListItemHtml(
+  mandate
+) {
   return `
     <article class="mandate-row">
+
       <div class="mandate-row-top">
         <div>
-          <h3>${escapeHtml(mandate.objective)}</h3>
-          <p>${escapeHtml(mandate.originalGoal)}</p>
+          <h3>
+            ${escapeHtml(
+              mandate.objective
+            )}
+          </h3>
+
+          <p>
+            ${escapeHtml(
+              mandate.originalGoal
+            )}
+          </p>
         </div>
-        <span class="badge badge-accent">Synthesized</span>
+
+        <span class="badge badge-accent">
+          Synthesized
+        </span>
       </div>
+
       <div class="mandate-meta">
-        <span>${formatMoney(mandate.maximumTotalCents)} maximum</span>
-        <span>Delivery by ${formatDate(mandate.deliveryDeadline)}</span>
-        <span>ID ${shortId(mandate.mandateId)}</span>
+        <span>
+          ${formatMoney(
+            mandate.maximumTotalCents
+          )}
+          maximum
+        </span>
+
+        <span>
+          Delivery by
+          ${formatDate(
+            mandate.deliveryDeadline
+          )}
+        </span>
       </div>
+
+      ${renderMandateMerchantPreferences(
+        mandate
+      )}
+
     </article>
+  `;
+}
+
+/**
+ * Renders the merchant-governance context captured inside
+ * a Mandate Envelope.
+ *
+ * The values shown here reflect the preferences that were
+ * active when Sentinq synthesized the mandate.
+ */
+function renderMandateMerchantPreferences(
+  mandate
+) {
+  const preferredMerchants =
+    mandate.preferredMerchants || [];
+
+  const prohibitedMerchants =
+    mandate.prohibitedMerchants || [];
+
+  const minimumReviewScore =
+    mandate.preferredMinimumReviewScore;
+
+  const minimumFulfillmentScore =
+    mandate.preferredMinimumFulfillmentScore;
+
+  return `
+    <div class="mandate-preferences">
+
+      <div class="mandate-preference-row">
+        <span>
+          Preferred merchants
+        </span>
+
+        <strong>
+          ${
+            preferredMerchants.length > 0
+              ? preferredMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Avoided merchants
+        </span>
+
+        <strong>
+          ${
+            prohibitedMerchants.length > 0
+              ? prohibitedMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum review score
+        </span>
+
+        <strong>
+          ${
+            minimumReviewScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum fulfillment score
+        </span>
+
+        <strong>
+          ${
+            minimumFulfillmentScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          New merchants
+        </span>
+
+        <strong>
+          ${
+            mandate.askBeforeUsingNewMerchant
+              ? "Ask first"
+              : "Allowed"
+          }
+        </strong>
+      </div>
+
+    </div>
+  `;
+}
+
+/**
+ * Renders the merchant-governance context captured inside
+ * a Mandate Envelope.
+ *
+ * The values shown here reflect the preferences that were
+ * active when Sentinq synthesized the mandate.
+ */
+function renderMandateMerchantPreferences(
+  mandate
+) {
+  const preferredMerchants =
+    mandate.preferredMerchants || [];
+
+  const prohibitedMerchants =
+    mandate.prohibitedMerchants || [];
+
+  const minimumReviewScore =
+    mandate.preferredMinimumReviewScore;
+
+  const minimumFulfillmentScore =
+    mandate.preferredMinimumFulfillmentScore;
+
+  return `
+    <div class="mandate-preferences">
+
+      <div class="mandate-preference-row">
+        <span>
+          Preferred merchants
+        </span>
+
+        <strong>
+          ${
+            preferredMerchants.length > 0
+              ? preferredMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Avoided merchants
+        </span>
+
+        <strong>
+          ${
+            prohibitedMerchants.length > 0
+              ? prohibitedMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum review score
+        </span>
+
+        <strong>
+          ${
+            minimumReviewScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum fulfillment score
+        </span>
+
+        <strong>
+          ${
+            minimumFulfillmentScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          New merchants
+        </span>
+
+        <strong>
+          ${
+            mandate.askBeforeUsingNewMerchant
+              ? "Ask first"
+              : "Allowed"
+          }
+        </strong>
+      </div>
+
+    </div>
+  `;
+}
+
+/**
+ * Renders the merchant-governance context captured inside
+ * a Mandate Envelope.
+ *
+ * The values shown here reflect the preferences that were
+ * active when Sentinq synthesized the mandate.
+ */
+function renderMandateMerchantPreferences(
+  mandate
+) {
+  const preferredMerchants =
+    mandate.preferredMerchants || [];
+
+  const prohibitedMerchants =
+    mandate.prohibitedMerchants || [];
+
+  const minimumReviewScore =
+    mandate.preferredMinimumReviewScore;
+
+  const minimumFulfillmentScore =
+    mandate.preferredMinimumFulfillmentScore;
+
+  return `
+    <div class="mandate-preferences">
+
+      <div class="mandate-preference-row">
+        <span>
+          Preferred merchants
+        </span>
+
+        <strong>
+          ${
+            preferredMerchants.length > 0
+              ? preferredMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Avoided merchants
+        </span>
+
+        <strong>
+          ${
+            prohibitedMerchants.length > 0
+              ? prohibitedMerchants
+                  .map(escapeHtml)
+                  .join(", ")
+              : "None configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum review score
+        </span>
+
+        <strong>
+          ${
+            minimumReviewScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          Minimum fulfillment score
+        </span>
+
+        <strong>
+          ${
+            minimumFulfillmentScore ??
+            "Not configured"
+          }
+        </strong>
+      </div>
+
+      <div class="mandate-preference-row">
+        <span>
+          New merchants
+        </span>
+
+        <strong>
+          ${
+            mandate.askBeforeUsingNewMerchant
+              ? "Ask first"
+              : "Allowed"
+          }
+        </strong>
+      </div>
+
+    </div>
   `;
 }
 
@@ -770,6 +1467,106 @@ let selectedTraceId = null;
  * refreshed and the currently selected trace (or the newest
  * trace) is displayed in the Execution Explorer.
  */
+
+ /**
+  * Builds a consumer-friendly summary of the Consumer Preferences
+  * that Sentinq applied during an orchestration.
+  *
+  * This makes the governed context visible in the Execution Trace
+  * without requiring the user to inspect raw JSON.
+  */
+ function renderPreferencesApplied(
+         preferences
+ ) {
+     if (!preferences) {
+         return "";
+     }
+
+     const preferredMerchants =
+             preferences.preferredMerchants || [];
+
+     const avoidedMerchants =
+             preferences.avoidedMerchants || [];
+
+     return `
+         <div class="audit-governance-context">
+
+             <div class="audit-context-group">
+                 <span class="audit-context-label">
+                     Preferred merchants
+                 </span>
+
+                 <strong>
+                     ${
+                         preferredMerchants.length > 0
+                             ? preferredMerchants
+                                 .map(escapeHtml)
+                                 .join(", ")
+                             : "None configured"
+                     }
+                 </strong>
+             </div>
+
+             <div class="audit-context-group">
+                 <span class="audit-context-label">
+                     Avoided merchants
+                 </span>
+
+                 <strong>
+                     ${
+                         avoidedMerchants.length > 0
+                             ? avoidedMerchants
+                                 .map(escapeHtml)
+                                 .join(", ")
+                             : "None configured"
+                     }
+                 </strong>
+             </div>
+
+             <div class="audit-context-group">
+                 <span class="audit-context-label">
+                     Minimum review score
+                 </span>
+
+                 <strong>
+                     ${
+                         preferences.preferredMinimumReviewScore ??
+                         "Not configured"
+                     }
+                 </strong>
+             </div>
+
+             <div class="audit-context-group">
+                 <span class="audit-context-label">
+                     Minimum fulfillment score
+                 </span>
+
+                 <strong>
+                     ${
+                         preferences.preferredMinimumFulfillmentScore ??
+                         "Not configured"
+                     }
+                 </strong>
+             </div>
+
+             <div class="audit-context-group">
+                 <span class="audit-context-label">
+                     New merchants
+                 </span>
+
+                 <strong>
+                     ${
+                         preferences.askBeforeUsingNewMerchant
+                             ? "Ask before using"
+                             : "Allowed"
+                     }
+                 </strong>
+             </div>
+
+         </div>
+     `;
+ }
+
 async function loadExecutionTraces() {
   try {
     const response =
@@ -818,6 +1615,7 @@ async function loadExecutionTraces() {
     `;
   }
 }
+
 
 /**
  * Renders every recorded orchestration as a compact, selectable
@@ -1085,6 +1883,14 @@ function renderTraceEvents(
             ${event.summary || ""}
           </p>
 
+          ${
+              event.eventType === "PREFERENCES_LOADED"
+                  ? renderPreferencesApplied(
+                      event.details
+                  )
+                  : ""
+          }
+
           <div class="audit-event-meta">
             <span>
               ${formatComponentName(
@@ -1102,11 +1908,13 @@ function renderTraceEvents(
                   </summary>
 
                   <pre>${escapeHtml(
-                    JSON.stringify(
-                      event.details,
-                      null,
-                      2
-                    )
+                      JSON.stringify(
+                          sanitizeAuditDetails(
+                              event.details
+                          ),
+                          null,
+                          2
+                      )
                   )}</pre>
                 </details>
               `
@@ -1116,6 +1924,7 @@ function renderTraceEvents(
       </div>
     `).join("");
 }
+
 
 /**
  * Converts internal audit event identifiers into
@@ -1197,6 +2006,49 @@ function formatComponentName(
     .trim();
 }
 
+/**
+ * Removes internal identifier fields from audit data before
+ * displaying it in the consumer-facing Execution Explorer.
+ *
+ * Sentinq retains identifiers internally for orchestration and
+ * traceability, but the normal Command Center view displays
+ * meaningful business information rather than implementation IDs.
+ */
+function sanitizeAuditDetails(
+        value
+) {
+    if (Array.isArray(value)) {
+        return value.map(
+                item =>
+                        sanitizeAuditDetails(item)
+        );
+    }
+
+    if (
+        value !== null &&
+        typeof value === "object"
+    ) {
+        return Object.fromEntries(
+                Object.entries(value)
+                        .filter(
+                                ([key]) =>
+                                        !key
+                                                .toLowerCase()
+                                                .endsWith("id")
+                        )
+                        .map(
+                                ([key, nestedValue]) => [
+                                    key,
+                                    sanitizeAuditDetails(
+                                            nestedValue
+                                    )
+                                ]
+                        )
+        );
+    }
+
+    return value;
+}
 /**
  * Converts an execution timestamp into a compact,
  * human-friendly value for the trace-history list.
