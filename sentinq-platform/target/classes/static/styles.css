@@ -305,7 +305,19 @@
 .mandate-preference-row {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 20px;
+}
+
+.mandate-preference-row span {
+  flex: 0 0 220px;
+}
+
+.mandate-preference-row strong {
+  flex: 1;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .mandate-preference-row span {

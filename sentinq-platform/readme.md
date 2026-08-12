@@ -58,3 +58,57 @@ This validated another important aspect of the Sentinq thesis: governed consumer
 
 ### Reflection
 Today Sentinq evolved beyond a simple request/response orchestration pipeline. The platform now supports multiple governed orchestration outcomes—including Completed, Clarification Required, and Blocked—while continuing to improve the execution traceability expected from an enterprise AI Control Plane.
+
+### Sentinq Command Center
+
+A working AI Control Plane demonstrating:
+
+- Multi-provider reasoning (OpenAI, Claude, Gemini)
+- Consumer Preferences
+- Mandate Envelope synthesis
+- Late-Binding Resolution
+- Execution Trace
+- Dynamic Agent Registry
+
+08/07/2026
+
+## Day 6 – Consumer Preferences and Governance
+
+Today shifted Sentinq from using static consumer preferences to allowing the consumer to actively govern agent behavior through the Command Center.
+
+### Completed
+- Added Google Gemini as the third reasoning provider alongside OpenAI and Claude.
+- Validated the provider abstraction by integrating Gemini without modifying the orchestration pipeline.
+- Implemented Consumer Preferences persistence using an in-memory store keyed by Principal.
+- Added REST endpoints to load, save, and delete Consumer Preferences.
+- Built the Consumer Preferences UI in the Command Center.
+- Integrated Consumer Preferences into mandate synthesis.
+- Updated the Late-Binding Resolution layer to correctly handle optional consumer preferences.
+- Enhanced the Execution Trace to display applied Consumer Preferences.
+- Updated the Mandate view to display the merchant governance context captured in the Mandate Envelope.
+- Replaced the hardcoded Connected Agent page with dynamically loaded AI agents from the backend.
+
+### Key Observation
+
+The addition of Consumer Preferences fundamentally changed the role of the Mandate Envelope.
+
+Rather than representing only the consumer's shopping goal, the mandate now captures the complete governance context under which the agent is allowed to
+operate. Merchant preferences become part of the immutable execution contract used during orchestration, creating an auditable snapshot of the consumer's 
+delegated authority at the moment the mandate was synthesized.
+
+### Reflection
+
+One week ago, adding another reasoning provider would have required architectural changes. Today, Gemini was integrated in approximately one hour by 
+implementing the existing provider contracts. The architecture is beginning to compound—new capabilities are being added without redesigning the platform.
+
+With Consumer Preferences now influencing orchestration, audit history, and mandate synthesis, Sentinq is evolving from a shopping demonstration into a 
+true AI Control Plane where consumers govern how AI agents make decisions on their behalf.
+
+### Live Demo:
+https://demo.sentinq.com
+
+Current focus:
+- Trust Maps
+- Contextual merchant reputation
+- Authentication
+- Persistent storage
