@@ -1,10 +1,13 @@
 package com.sentinq.trust;
 
-// EvidenceChannel.java
-
 public enum EvidenceChannel {
     DIRECT_MERCHANT,
     THIRD_PARTY_RETAILER,
     MARKETPLACE,
+    REVIEW_PLATFORM,
+    COMMUNITY_FORUM,
+    EXPERT_OR_EDUCATIONAL_SOURCE,
+    REGULATORY_OR_COMPLAINT_SOURCE,
+    CONSUMER_HISTORY,
     UNKNOWN
 }

@@ -112,3 +112,70 @@ Current focus:
 - Contextual merchant reputation
 - Authentication
 - Persistent storage
+
+08/11/2026
+## Day 8 — Trust Maps: From Evidence to Contextual Research
+
+### Completed
+
+- Built provider-independent trust-evidence interpretation across OpenAI, Claude, and Gemini.
+- Added `EvidenceInterpretationService` and provider registry with structured `EvidenceInterpretationDecision` output.
+- Constrained all reasoning providers to Sentinq's trust ontology rather than allowing providers to invent new interpretation, context, or trust-signal types.
+- Tested all three providers against the same ambiguous evidence: **"The rose arrived tiny for the price."**
+- Confirmed that OpenAI, Claude, and Gemini independently returned `CONTEXT_REQUIRED` and `NO_INFERENCE`, while identifying different missing context.
+- Added the first Trust Maps contextual research layer:
+    - `ContextResearchService`
+    - `ContextResearchProvider`
+    - `ContextResearchProviderRegistry`
+    - `ContextResearchDecision`
+    - `ContextResearchFinding`
+- Added OpenAI web research for unresolved `ContextRequirement`s.
+- Made contextual research merchant-aware by explicitly carrying `merchantId` and `merchantName` through the research pipeline.
+- Added research safeguards separating merchant-specific claims from broader category norms.
+- Ran the first live Heirloom Roses research experiment against public web evidence.
+
+### Key Observation
+
+Raw evidence is not a trust signal.
+
+All three reasoning providers independently recognized that a negative-sounding customer observation could not safely become a negative product-quality signal without additional context.
+
+The live web experiment then exposed two additional architectural requirements:
+
+**Trust research needs an explicit subject.**
+
+Without knowing which merchant was being evaluated, the research layer could find valid category information but could also incorrectly use another merchant's product specification when investigating what the evaluated merchant had promised.
+
+After making research merchant-aware, merchant-specific evidence and broader category evidence became meaningfully separable.
+
+**Web evidence needs provenance before it can re-enter trust reasoning.**
+
+A merchant product page, independent horticultural authority, community discussion, and customer review may all contain useful evidence, but they should not carry the same epistemic weight.
+
+### Reflection
+
+Today's implementation moved Trust Maps from a static domain model into an actual reasoning loop:
+
+`OBSERVE → INTERPRET → CONTEXT_REQUIRED → RESEARCH`
+
+The most useful discoveries did not come from designing more classes in advance. They appeared when the architecture encountered real evidence and real web research.
+
+The system itself exposed what the model was missing.
+
+That is the purpose of Sentinq Labs: turn the thesis into software, run it against reality, and let the implementation challenge the thesis.
+
+A second principle is also emerging alongside the broader Sentinq principle that an agent may reason broadly but should not convert its own interpretation into permission to act:
+
+> **An agent may observe broadly, but should not convert raw evidence into trust without establishing what that evidence means.**
+
+### Next
+
+Add provenance metadata to `ContextResearchFinding`, including source type, independence, expertise, channel, and evidence horizon.
+
+Then convert researched findings into first-class `TrustEvidence` and `ContextFinding` artifacts before allowing them back into the interpretation layer.
+
+Next target orchestration:
+
+`OBSERVE → INTERPRET → RESEARCH → PROVENANCE → CONTEXT FINDINGS → REINTERPRET`
+
+Only after that boundary is working will contextual research be extended across the remaining providers and into higher-level Trust Map assessment.

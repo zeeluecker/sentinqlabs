@@ -10,11 +10,13 @@ import com.sentinq.preference.*;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.LateBindingResolutionService;
 import com.sentinq.resolution.ResolutionResult;
+import com.sentinq.trust.*;
 import org.springframework.stereotype.Service;
 import com.sentinq.audit.AuditEventType;
 import com.sentinq.audit.AuditService;
 import com.sentinq.audit.ExecutionTrace;
 
+import java.math.BigDecimal;
 import java.util.Map;
 
 import java.time.LocalDate;
@@ -36,6 +38,7 @@ public class ShoppingOrchestrationService {
     private final ProductSearchService productSearchService;
     private final CandidateOfferFactory candidateOfferFactory;
     private final AuditService auditService;
+    private final TrustMapOrchestrationService trustMapOrchestrationService;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -49,7 +52,8 @@ public class ShoppingOrchestrationService {
             GoalFactory goalFactory,
             ProductSearchService productSearchService,
             CandidateOfferFactory candidateOfferFactory,
-            AuditService auditService
+            AuditService auditService,
+            TrustMapOrchestrationService trustMapOrchestrationService
 
     ) {
         this.mandateBuilder = mandateBuilder;
@@ -63,6 +67,7 @@ public class ShoppingOrchestrationService {
         this.productSearchService = productSearchService;
         this.candidateOfferFactory = candidateOfferFactory;
         this.auditService = auditService;
+        this.trustMapOrchestrationService = trustMapOrchestrationService;
     }
 
     public ShoppingOrchestrationResult orchestrate(
@@ -227,7 +232,29 @@ public class ShoppingOrchestrationService {
                         .map(candidateOfferFactory::create)
                         .toList();
 
+        List<TrustAssessedCandidate> trustAssessedCandidates =
+                candidates.stream()
+                        .map(candidate ->
+                                assessCandidateTrust(
+                                        agent.getProvider(),
+                                        candidate,
+                                        goal,
+                                        preferences
+                                )
+                        )
+                        .toList();
+
         List<ResolvedCandidate> resolvedCandidates =
+                trustAssessedCandidates.stream()
+                        .map(trustAssessed ->
+                                resolveCandidate(
+                                        trustAssessed.candidate(),
+                                        mandate
+                                )
+                        )
+                        .toList();
+
+        /*List<ResolvedCandidate> resolvedCandidates =
                 candidates.stream()
                         .map(candidate ->
                                 resolveCandidate(
@@ -236,6 +263,9 @@ public class ShoppingOrchestrationService {
                                 )
                         )
                         .toList();
+
+         */
+
         auditService.recordEvent(
                 trace.getTraceId(),
                 AuditEventType.CANDIDATES_RESOLVED,
@@ -255,6 +285,7 @@ public class ShoppingOrchestrationService {
         ShoppingOrchestrationResult result =
                 new ShoppingOrchestrationResult(
                         mandate,
+                        trustAssessedCandidates,
                         resolvedCandidates,
                         selectedCandidate.orElse(null)
                 );
@@ -274,6 +305,57 @@ public class ShoppingOrchestrationService {
         );
 
         return result;
+    }
+
+    private TrustAssessedCandidate assessCandidateTrust(
+            String provider,
+            CandidateOffer candidate,
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        TrustContext trustContext =
+                buildTrustContext(
+                        goal,
+                        candidate,
+                        preferences
+                );
+
+        MerchantTrustAssessment trustAssessment =
+                trustMapOrchestrationService.assessMerchant(
+                        provider,
+                        candidate,
+                        trustContext
+                );
+
+        return new TrustAssessedCandidate(
+                candidate,
+                trustAssessment
+        );
+    }
+
+    private TrustContext buildTrustContext(
+            Goal goal,
+            CandidateOffer candidate,
+            ConsumerPreferences preferences
+    ) {
+        return new TrustContext(
+                goal.getOriginalRequest(),
+                "UNKNOWN",
+                goal.getProductName(),
+                Map.of(),
+                new BigDecimal(
+                        candidate.getProductPriceCents()
+                ).movePointLeft(2),
+                DeliveryUrgency.NORMAL,
+                MerchantFamiliarity.UNKNOWN,
+                List.of(
+                        TrustDimension.PRODUCT_QUALITY,
+                        TrustDimension.PRODUCT_DURABILITY,
+                        TrustDimension.FULFILLMENT_RELIABILITY,
+                        TrustDimension.CUSTOMER_REMEDIATION,
+                        TrustDimension.REFUND_RELIABILITY
+                )
+        );
     }
 
     private ResolvedCandidate resolveCandidate(

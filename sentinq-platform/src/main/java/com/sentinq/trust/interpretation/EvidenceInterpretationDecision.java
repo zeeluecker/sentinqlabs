@@ -8,10 +8,10 @@ import java.util.List;
 
 /**
  * Structured reasoning output returned by an AI provider
- * when interpreting raw trust evidence.
+ * after interpreting a piece of raw trust evidence.
  *
- * Sentinq later enriches this provider decision with
- * interpretation identity, evidence references, and context findings.
+ * This is an intermediate provider decision and is later
+ * converted into Sentinq's EvidenceInterpretation domain object.
  */
 public record EvidenceInterpretationDecision(
         InterpretationStatus status,

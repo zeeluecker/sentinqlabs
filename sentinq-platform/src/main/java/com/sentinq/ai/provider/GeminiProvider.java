@@ -5,6 +5,7 @@ import com.google.genai.types.GenerateContentResponse;
 import com.sentinq.ai.InterpretedShoppingGoal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinq.trust.ContextFinding;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
@@ -324,6 +325,35 @@ public class GeminiProvider
         );
     }
 
+    @Override
+    public EvidenceInterpretationDecision reinterpretEvidence(
+            TrustEvidence evidence,
+            TrustContext context,
+            List<TrustEvidence> researchedEvidence,
+            List<ContextFinding> contextFindings
+    ) {
+        validateEvidenceInterpretationInputs(
+                evidence,
+                context
+        );
+
+        GenerateContentResponse response =
+                geminiClient.models.generateContent(
+                        MODEL,
+                        buildEvidenceReinterpretationPrompt(
+                                evidence,
+                                context,
+                                researchedEvidence,
+                                contextFindings
+                        ),
+                        null
+                );
+
+        return deserializeEvidenceInterpretation(
+                response.text()
+        );
+    }
+
     private void validateEvidenceInterpretationInputs(
             TrustEvidence evidence,
             TrustContext context
@@ -339,6 +369,202 @@ public class GeminiProvider
                     "Trust context is required for interpretation."
             );
         }
+    }
+
+    private String buildEvidenceReinterpretationPrompt(
+            TrustEvidence evidence,
+            TrustContext context,
+            List<TrustEvidence> researchedEvidence,
+            List<ContextFinding> contextFindings
+    ) {
+        return """
+            You are reinterpreting trust evidence for Sentinq Trust Maps.
+
+            An earlier interpretation found that the original evidence
+            required more context.
+
+            Sentinq then researched that missing context and created new,
+            source-traceable TrustEvidence and ContextFinding records.
+
+            Your job is to reinterpret the ORIGINAL evidence using the newly
+            researched context.
+
+            Return only a valid JSON object.
+            Do not include markdown, commentary, or a code fence.
+
+            You must use only the following Sentinq enum values.
+
+            Allowed InterpretationStatus values:
+            - DIRECT_SIGNAL
+            - CONTEXT_REQUIRED
+            - CONTEXT_RESOLVED
+            - AMBIGUOUS
+            - MISLEADING_WITHOUT_CONTEXT
+            - INSUFFICIENT_EVIDENCE
+            - NOT_RELEVANT
+
+            Allowed ContextType values:
+            - CONSUMER_OBJECTIVE
+            - TRANSACTION_CHANNEL
+            - MERCHANT_PROMISE
+            - TIME_HORIZON
+            - PRODUCT_ATTRIBUTE
+            - CATEGORY_NORM
+            - COMMUNITY_NORM
+            - USAGE_CONDITION
+
+            Allowed TrustSignal values:
+            - STRONGLY_SUPPORTIVE
+            - SUPPORTIVE
+            - NEUTRAL
+            - MIXED
+            - CONCERNING
+            - STRONGLY_CONCERNING
+            - NO_INFERENCE
+
+            Do not invent enum values.
+
+            Use exactly this structure:
+
+            {
+              "status": "CONTEXT_RESOLVED",
+              "apparentMeaning": "string",
+              "contextRequirements": [],
+              "contextualMeaning": "string",
+              "signal": "NO_INFERENCE",
+              "confidence": 0.0,
+              "supportingEvidenceIds": [],
+              "contradictingEvidenceIds": []
+            }
+
+            Original evidence:
+            - Evidence ID: %s
+            - Proposed trust dimension: %s
+            - Raw claim: %s
+            - Source excerpt: %s
+            - Source type: %s
+            - Source independence: %s
+            - Source expertise: %s
+            - Channel: %s
+            - Evidence horizon: %s
+
+            Consumer shopping context:
+            - Goal: %s
+            - Product category: %s
+            - Product type: %s
+            - Product attributes: %s
+            - Transaction value: %s
+            - Delivery urgency: %s
+            - Merchant familiarity: %s
+            - Important trust dimensions: %s
+
+            Researched evidence:
+            %s
+
+            Context findings:
+            %s
+
+            Reinterpretation rules:
+
+            1. Reinterpret the original evidence in light of the researched
+               context.
+
+            2. Do not change or rewrite the original evidence.
+
+            3. Use the researched evidence only for what its source can
+               reasonably establish.
+
+            4. Merchant first-party evidence may establish what the merchant
+               says, promises, or describes, but is not independent proof that
+               the merchant consistently performs as claimed.
+
+            5. Independent expert evidence may establish category norms or
+               domain knowledge when relevant.
+
+            6. Community or customer evidence may describe experiences or
+               patterns, but should not automatically override stronger or
+               more direct evidence.
+            7. Missing information may remain unknown.
+
+            8. A ContextRequirement is required only if the interpretation
+            cannot reasonably be completed without it.
+
+            9. Do not create or retain ContextRequirements merely because
+            additional information could improve confidence.
+
+            10. After considering the researched evidence, decide whether any
+            remaining unknown could materially change the interpretation
+            of the ORIGINAL evidence for the CURRENT proposed TrustDimension.
+
+            11. If a remaining unknown could materially change the interpretation:
+            - use CONTEXT_REQUIRED
+            - return only the ContextRequirements that are necessary to resolve it.
+
+            12. If the remaining unknowns are unlikely to materially change the
+            interpretation:
+            - use CONTEXT_RESOLVED
+            - return an empty contextRequirements list.
+
+            13. CONTEXT_RESOLVED does not mean perfect or complete knowledge.
+            It means sufficient context exists to make a reasonable,
+            bounded interpretation of the original evidence for the CURRENT
+            proposed TrustDimension.
+
+            14. Do not keep a ContextRequirement merely because it would help
+            assess a different TrustDimension.
+
+            For example, if the current proposed dimension is PRODUCT_QUALITY,
+            an unanswered question about long-term durability should not
+            prevent PRODUCT_QUALITY from being context-resolved unless that
+            information is actually necessary to understand product quality.
+            
+            15. contextualMeaning should explain how the researched context
+                changes, confirms, limits, or clarifies the apparent meaning
+                of the original evidence.
+            
+            16. supportingEvidenceIds may contain only evidence IDs supplied
+                in the researched evidence.
+            
+            17. contradictingEvidenceIds may contain only evidence IDs supplied
+                in the researched evidence.
+            
+            18. Do not invent evidence IDs.
+            
+            19. signal should reflect what the ORIGINAL evidence now supports
+                after context is considered.
+            
+            20. Do not create an overall merchant trust score or merchant
+                recommendation.
+            
+            21. confidence represents confidence in this contextual
+                interpretation, not confidence in the merchant overall.            
+                
+
+            Return only the JSON object.
+
+            """.formatted(
+                evidence.evidenceId(),
+                evidence.proposedDimension(),
+                evidence.rawClaim(),
+                evidence.sourceExcerpt(),
+                evidence.source().type(),
+                evidence.source().independence(),
+                evidence.source().expertise(),
+                evidence.channel(),
+                evidence.evidenceHorizon(),
+
+                context.goal(),
+                context.productCategory(),
+                context.productType(),
+                context.productAttributes(),
+                context.transactionValue(),
+                context.deliveryUrgency(),
+                context.merchantFamiliarity(),
+                context.importantDimensions(),
+
+                researchedEvidence,
+                contextFindings
+        );
     }
 
     /**

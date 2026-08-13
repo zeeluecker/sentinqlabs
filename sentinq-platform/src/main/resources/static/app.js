@@ -60,6 +60,7 @@ const elements = {
   auditTimeline: document.getElementById("auditTimeline"),
   mandateResult: document.getElementById("mandateResult"),
   selectedResult: document.getElementById("selectedResult"),
+  trustMapResults: document.getElementById("trustMapResults"),
   candidateResults: document.getElementById("candidateResults")
 };
 
@@ -2185,9 +2186,43 @@ refreshAuditButton.addEventListener(
 // -----------------------------------------------------------------------------
 
 function renderShoppingResult(result) {
-  renderMandate(result.mandate);
-  renderSelectedCandidate(result.selectedCandidate);
-  renderCandidateCarts(result.candidates ?? []);
+    renderMandate(result.mandate);
+
+    renderSelectedCandidate(
+        result.selectedCandidate
+    );
+
+    renderTrustMaps(
+        result.trustAssessedCandidates ?? []
+    );
+
+    renderCandidates(
+        result.candidates ?? []
+    );
+}
+
+function renderTrustMaps(
+    trustAssessedCandidates
+) {
+    if (!trustAssessedCandidates?.length) {
+        elements.trustMapResults.innerHTML = "";
+        return;
+    }
+
+    elements.trustMapResults.innerHTML = `
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">TRUST MAPS</p>
+                <h2>Merchant trust evidence</h2>
+            </div>
+        </div>
+
+        <div class="candidate-grid">
+            ${trustAssessedCandidates
+                .map(createTrustMapCandidateHtml)
+                .join("")}
+        </div>
+    `;
 }
 
 function renderMandate(mandate) {
@@ -2265,6 +2300,141 @@ function createSelectedCandidateHtml(selectedCandidate) {
       </p>
     </article>
   `;
+}
+
+function createTrustMapCandidateHtml(
+    trustAssessedCandidate
+) {
+    const candidate =
+        trustAssessedCandidate.candidate;
+
+    const trustAssessment =
+        trustAssessedCandidate.trustAssessment;
+
+    const assessments =
+        trustAssessment?.evidenceAssessments ?? [];
+
+    return `
+        <article class="candidate-card">
+
+            <div class="candidate-header">
+                <div>
+                    <h3>
+                        ${escapeHtml(candidate.merchantName)}
+                    </h3>
+
+                    <p>
+                        ${escapeHtml(candidate.productName)}
+                    </p>
+                </div>
+
+                <span class="badge badge-accent">
+                    ${assessments.length} signals
+                </span>
+            </div>
+
+            <div class="trust-evidence-list">
+
+                ${assessments
+                    .map(createTrustEvidenceHtml)
+                    .join("")}
+
+            </div>
+
+        </article>
+    `;
+}
+
+function createTrustEvidenceHtml(
+    assessment
+) {
+    const evidence =
+        assessment.originalEvidence;
+
+    const interpretation =
+        assessment.interpretation;
+
+    return `
+        <div class="trust-evidence-item">
+
+            <div class="trust-evidence-header">
+
+                <strong>
+                    ${escapeHtml(
+                        formatTrustDimension(
+                            evidence.proposedDimension
+                        )
+                    )}
+                </strong>
+
+                <span class="badge">
+                    ${escapeHtml(
+                        interpretation.signal
+                    )}
+                </span>
+
+            </div>
+
+            <p class="section-copy">
+                ${escapeHtml(
+                    interpretation.contextualMeaning
+                    || interpretation.apparentMeaning
+                    || evidence.rawClaim
+                )}
+            </p>
+
+            <div class="trust-evidence-meta">
+                <span>
+                    ${escapeHtml(
+                        evidence.source?.name
+                        ?? "Unknown source"
+                    )}
+                </span>
+
+                <span>
+                    Confidence:
+                    ${formatConfidence(
+                        interpretation.confidence
+                    )}
+                </span>
+
+                ${
+                    assessment.researchRounds > 0
+                        ? `<span>
+                               Researched:
+                               ${assessment.researchRounds}
+                               round
+                           </span>`
+                        : ""
+                }
+            </div>
+
+        </div>
+    `;
+}
+
+function formatTrustDimension(value) {
+    if (!value) {
+        return "Trust evidence";
+    }
+
+    return value
+        .toLowerCase()
+        .split("_")
+        .map(word =>
+            word.charAt(0).toUpperCase()
+            + word.slice(1)
+        )
+        .join(" ");
+}
+
+function formatConfidence(value) {
+    if (value === null ||
+        value === undefined) {
+        return "—";
+    }
+
+    return `${Math.round(value * 100)}%`;
 }
 
 function renderCandidateCarts(candidates) {

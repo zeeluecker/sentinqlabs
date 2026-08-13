@@ -329,3 +329,30 @@
   text-align: right;
   font-size: 0.82rem;
 }
+
+.trust-evidence-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.trust-evidence-item {
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.trust-evidence-header,
+.trust-evidence-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.trust-evidence-meta {
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}

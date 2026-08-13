@@ -61,7 +61,8 @@ public class EvidenceInterpretationService {
 
         return createInterpretation(
                 evidence,
-                decision
+                decision,
+                List.of()
         );
     }
 
@@ -74,7 +75,8 @@ public class EvidenceInterpretationService {
      */
     private EvidenceInterpretation createInterpretation(
             TrustEvidence evidence,
-            EvidenceInterpretationDecision decision
+            EvidenceInterpretationDecision decision,
+            List<ContextFinding> contextFindings
     ) {
         return new EvidenceInterpretation(
                 UUID.randomUUID().toString(),
@@ -82,7 +84,7 @@ public class EvidenceInterpretationService {
                 decision.status(),
                 decision.apparentMeaning(),
                 decision.contextRequirements(),
-                List.of(),
+                contextFindings,
                 decision.contextualMeaning(),
                 decision.signal(),
                 decision.confidence(),
@@ -118,5 +120,52 @@ public class EvidenceInterpretationService {
                     "Trust context is required."
             );
         }
+    }
+
+    public EvidenceInterpretation reinterpret(
+            String provider,
+            TrustEvidence evidence,
+            TrustContext context,
+            List<TrustEvidence> researchedEvidence,
+            List<ContextFinding> contextFindings
+    ) {
+        validateInputs(
+                provider,
+                evidence,
+                context
+        );
+
+        if (researchedEvidence == null ||
+                researchedEvidence.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Researched evidence is required for reinterpretation."
+            );
+        }
+
+        if (contextFindings == null ||
+                contextFindings.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Context findings are required for reinterpretation."
+            );
+        }
+
+        EvidenceInterpretationProvider interpretationProvider =
+                providerRegistry.getProvider(
+                        provider
+                );
+
+        EvidenceInterpretationDecision decision =
+                interpretationProvider.reinterpretEvidence(
+                        evidence,
+                        context,
+                        researchedEvidence,
+                        contextFindings
+                );
+
+        return createInterpretation(
+                evidence,
+                decision,
+                List.of()
+        );
     }
 }
