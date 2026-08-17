@@ -2186,19 +2186,74 @@ refreshAuditButton.addEventListener(
 // -----------------------------------------------------------------------------
 
 function renderShoppingResult(result) {
-    renderMandate(result.mandate);
+  renderMandate(result.mandate);
 
-    renderSelectedCandidate(
-        result.selectedCandidate
-    );
+  renderSelectedCandidate(
+    result.selectedCandidate
+  );
 
-    renderTrustMaps(
-        result.trustAssessedCandidates ?? []
-    );
+  renderCandidateCarts(
+    result.candidates ?? [],
+    result.trustAssessedCandidates ?? []
+  );
+}
 
-    renderCandidates(
-        result.candidates ?? []
-    );
+function createBlockedDecisionHtml() {
+  return `
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">EXECUTION DECISION</p>
+          <h3>No shortlisted candidate selected</h3>
+        </div>
+        <span class="badge badge-danger">Blocked</span>
+      </div>
+
+      <p class="section-copy">
+        No preliminarily viable candidate was selected for this run.
+      </p>
+    </article>
+  `;
+}
+
+function createSelectedCandidateHtml(
+  selectedCandidate
+) {
+  const { offer, resolution } =
+    selectedCandidate;
+
+  return `
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">SELECTED CART</p>
+          <h3>
+            ${escapeHtml(
+              offer.merchantName
+            )}
+          </h3>
+        </div>
+
+        <span class="badge badge-success">
+          Shortlisted
+        </span>
+      </div>
+
+      <p class="section-copy">
+        ${escapeHtml(
+          offer.productName
+        )}
+        ·
+        ${formatMoney(
+          resolution.resolvedTotalCents
+        )}
+        · delivery
+        ${formatDate(
+          resolution.estimatedDeliveryDate
+        )}
+      </p>
+    </article>
+  `;
 }
 
 function renderTrustMaps(
@@ -2281,23 +2336,100 @@ function createBlockedDecisionHtml() {
   `;
 }
 
-function createSelectedCandidateHtml(selectedCandidate) {
-  const { offer, resolution } = selectedCandidate;
+function createCandidateCardHtml(
+  candidate,
+  trustAssessment
+) {
+  const { offer, resolution } = candidate;
+
+  const statusClass =
+    resolution.executable
+      ? "badge-success"
+      : "badge-danger";
+
+  const statusLabel =
+    resolution.executable
+      ? "Executable"
+      : "Blocked";
 
   return `
-    <article class="panel">
-      <div class="panel-heading">
+    <article class="candidate-card">
+
+      <div class="candidate-header">
         <div>
-          <p class="eyebrow">SELECTED CART</p>
-          <h3>${escapeHtml(offer.merchantName)}</h3>
+          <h3>
+            ${escapeHtml(offer.merchantName)}
+          </h3>
+
+          <p>
+            ${escapeHtml(offer.productName)}
+          </p>
         </div>
-        <span class="badge badge-success">Executable</span>
+
+        <span class="badge ${statusClass}">
+          ${statusLabel}
+        </span>
       </div>
+
+      <div class="price-grid">
+        <span>Product</span>
+        <strong>
+          ${formatMoney(
+            resolution.productPriceCents
+          )}
+        </strong>
+
+        <span>Shipping</span>
+        <strong>
+          ${formatMoney(
+            resolution.shippingCents
+          )}
+        </strong>
+
+        <span>Tax</span>
+        <strong>
+          ${formatMoney(
+            resolution.taxCents
+          )}
+        </strong>
+
+        <span>Resolved total</span>
+        <strong>
+          ${formatMoney(
+            resolution.resolvedTotalCents
+          )}
+        </strong>
+      </div>
+
+      ${
+        createTrustMapSummaryHtml(
+          trustAssessment
+        )
+      }
+
       <p class="section-copy">
-        ${escapeHtml(offer.productName)} ·
-        ${formatMoney(resolution.resolvedTotalCents)} ·
-        delivery ${formatDate(resolution.estimatedDeliveryDate)}
+        Delivery
+        ${formatDate(
+          resolution.estimatedDeliveryDate
+        )}
       </p>
+
+      ${
+        renderMessages(
+          "Violations",
+          resolution.violations,
+          "danger"
+        )
+      }
+
+      ${
+        renderMessages(
+          "Warnings",
+          resolution.warnings,
+          "warning"
+        )
+      }
+
     </article>
   `;
 }
@@ -2436,53 +2568,273 @@ function formatConfidence(value) {
 
     return `${Math.round(value * 100)}%`;
 }
+function renderCandidateCarts(
+  candidates,
+  trustAssessedCandidates
+) {
+  const trustByOfferId =
+    new Map(
+      trustAssessedCandidates.map(item => [
+        item.candidate?.offerId,
+        item.trustAssessment
+      ])
+    );
 
-function renderCandidateCarts(candidates) {
   elements.candidateResults.innerHTML = `
     <div class="section-heading">
       <div>
-        <p class="eyebrow">LATE-BINDING RESOLUTION</p>
+        <p class="eyebrow">CANDIDATE ASSESSMENT</p>
         <h2>Candidate carts</h2>
       </div>
     </div>
+
     <div class="candidate-grid">
-      ${candidates.map(createCandidateCardHtml).join("")}
+      ${
+        candidates
+          .map(candidate => {
+            const trustAssessment =
+              trustByOfferId.get(
+                candidate.offer?.offerId
+              );
+
+            return createCandidateCardHtml(
+              candidate,
+              trustAssessment
+            );
+          })
+          .join("")
+      }
     </div>
   `;
 }
 
-function createCandidateCardHtml(candidate) {
+function createCandidateCardHtml(
+  candidate,
+  trustAssessment
+) {
   const { offer, resolution } = candidate;
-  const statusClass = resolution.executable ? "badge-success" : "badge-danger";
-  const statusLabel = resolution.executable ? "Executable" : "Blocked";
+
+  const statusClass =
+    resolution.executable
+      ? "badge-success"
+      : "badge-danger";
+
+  const statusLabel =
+    resolution.executable
+      ? "Executable"
+      : "Blocked";
 
   return `
     <article class="candidate-card">
+
       <div class="candidate-header">
         <div>
           <h3>${escapeHtml(offer.merchantName)}</h3>
           <p>${escapeHtml(offer.productName)}</p>
         </div>
-        <span class="badge ${statusClass}">${statusLabel}</span>
+
+        <span class="badge ${statusClass}">
+          ${statusLabel}
+        </span>
       </div>
 
       <div class="price-grid">
-        <span>Product</span><strong>${formatMoney(resolution.productPriceCents)}</strong>
-        <span>Shipping</span><strong>${formatMoney(resolution.shippingCents)}</strong>
-        <span>Tax</span><strong>${formatMoney(resolution.taxCents)}</strong>
-        <span>Resolved total</span><strong>${formatMoney(resolution.resolvedTotalCents)}</strong>
+        <span>Product</span>
+        <strong>${formatMoney(resolution.productPriceCents)}</strong>
+
+        <span>Shipping</span>
+        <strong>${formatMoney(resolution.shippingCents)}</strong>
+
+        <span>Tax</span>
+        <strong>${formatMoney(resolution.taxCents)}</strong>
+
+        <span>Resolved total</span>
+        <strong>${formatMoney(resolution.resolvedTotalCents)}</strong>
       </div>
 
+      ${createTrustMapSummaryHtml(trustAssessment)}
+
       <p class="section-copy">
-        Delivery ${formatDate(resolution.estimatedDeliveryDate)} ·
-        fulfillment ${offer.fulfillmentScore} ·
-        review ${offer.reviewScore}
+        Delivery ${formatDate(resolution.estimatedDeliveryDate)}
       </p>
 
-      ${createMessageBoxHtml("Violations", resolution.violations, "danger")}
-      ${createMessageBoxHtml("Warnings", resolution.warnings, "warning")}
+      ${renderMessages(
+        "Violations",
+        resolution.violations,
+        "danger"
+      )}
+
+      ${renderMessages(
+        "Warnings",
+        resolution.warnings,
+        "warning"
+      )}
+
     </article>
   `;
+}
+
+function renderMessages(
+  title,
+  messages,
+  type
+) {
+  if (!messages?.length) {
+    return "";
+  }
+
+  return `
+    <div class="message-group message-group-${type}">
+      <strong>${escapeHtml(title)}</strong>
+
+      <ul>
+        ${
+          messages
+            .map(
+              message => `
+                <li>
+                  ${escapeHtml(message)}
+                </li>
+              `
+            )
+            .join("")
+        }
+      </ul>
+    </div>
+  `;
+}
+
+function createTrustMapSummaryHtml(
+  trustAssessment
+) {
+  if (!trustAssessment?.synthesis) {
+    return `
+      <div class="trust-map-summary">
+        <p class="eyebrow">
+          TRUST MAP
+        </p>
+
+        <p class="section-copy">
+          No Trust Map assessment was run
+          for this candidate.
+        </p>
+      </div>
+    `;
+  }
+
+  const synthesis =
+    trustAssessment.synthesis;
+
+  const themes =
+    synthesis.themes ?? [];
+
+  const evidenceCount =
+    (trustAssessment.observedEvidence?.length ?? 0)
+    +
+    (trustAssessment.researchedEvidence?.length ?? 0);
+
+  const confidence =
+    Math.round(
+      (synthesis.confidence ?? 0) * 100
+    );
+
+  return `
+    <div class="trust-map-summary">
+
+      <div class="trust-map-heading">
+        <div>
+          <p class="eyebrow">
+            TRUST MAP
+          </p>
+
+          <h4>
+            My take
+          </h4>
+        </div>
+
+        <span class="badge">
+          ${confidence}% confidence
+        </span>
+      </div>
+
+      <p class="trust-map-take">
+        ${escapeHtml(
+          buildTrustMapTake(themes)
+        )}
+      </p>
+
+      <div class="trust-theme-list">
+        ${
+          themes
+            .map(
+              createTrustThemeHtml
+            )
+            .join("")
+        }
+      </div>
+
+      <details class="trust-map-evidence">
+        <summary>
+          View evidence ·
+          ${evidenceCount} sources
+        </summary>
+
+        ${
+          createTrustEvidenceHtml(
+            trustAssessment
+          )
+        }
+      </details>
+
+    </div>
+  `;
+}
+
+function buildTrustMapTake(
+  themes
+) {
+  if (!themes?.length) {
+    return "I don't have enough evidence to form a useful view yet.";
+  }
+
+  const concerning =
+    themes.filter(
+      theme =>
+        theme.signal === "CONCERNING" ||
+        theme.signal === "STRONGLY_CONCERNING"
+    );
+
+  const mixed =
+    themes.filter(
+      theme =>
+        theme.signal === "MIXED"
+    );
+
+  const supportive =
+    themes.filter(
+      theme =>
+        theme.signal === "SUPPORTIVE" ||
+        theme.signal === "STRONGLY_SUPPORTIVE"
+    );
+
+  if (concerning.length > 0) {
+    return "I found meaningful concerns here. I would look closely at the flagged areas before relying on this merchant.";
+  }
+
+  if (mixed.length > 0 &&
+      supportive.length > 0) {
+    return "I see some reassuring evidence, but the picture isn't clean enough for an unqualified recommendation. There are a few areas I'd keep in mind.";
+  }
+
+  if (mixed.length > 0) {
+    return "The evidence is mixed. I wouldn't treat this merchant as clearly good or clearly bad based on what I found.";
+  }
+
+  if (supportive.length > 0) {
+    return "The evidence is generally reassuring. I didn't find a major trust issue in the areas I assessed.";
+  }
+
+  return "The evidence doesn't point strongly in either direction yet.";
 }
 
 function createMessageBoxHtml(title, messages, messageType) {
@@ -2498,6 +2850,151 @@ function createMessageBoxHtml(title, messages, messageType) {
     <div class="message-box ${messageType}">
       <strong>${escapeHtml(title)}</strong>
       <ul>${messageItems}</ul>
+    </div>
+  `;
+}
+
+function createTrustThemeHtml(
+  theme
+) {
+  return `
+    <div class="trust-theme">
+
+      <div class="trust-theme-header">
+        <strong>
+          ${escapeHtml(
+            formatTrustDimension(
+              theme.dimension
+            )
+          )}
+        </strong>
+
+        <span class="badge">
+          ${escapeHtml(
+            formatTrustSignal(
+              theme.signal
+            )
+          )}
+        </span>
+      </div>
+
+      <p>
+        ${escapeHtml(
+          theme.theme
+        )}
+      </p>
+
+    </div>
+  `;
+}
+
+function formatTrustDimension(
+  dimension
+) {
+  if (!dimension) {
+    return "Trust";
+  }
+
+  return dimension
+    .toLowerCase()
+    .split("_")
+    .map(
+      word =>
+        word.charAt(0).toUpperCase()
+        + word.slice(1)
+    )
+    .join(" ");
+}
+
+function formatTrustSignal(
+  signal
+) {
+  if (!signal) {
+    return "Unknown";
+  }
+
+  return signal
+    .toLowerCase()
+    .split("_")
+    .map(
+      word =>
+        word.charAt(0).toUpperCase()
+        + word.slice(1)
+    )
+    .join(" ");
+}
+
+function createTrustEvidenceHtml(
+  trustAssessment
+) {
+  const observed =
+    trustAssessment.observedEvidence ?? [];
+
+  const researched =
+    trustAssessment.researchedEvidence ?? [];
+
+  const allEvidence = [
+    ...observed.map(item => ({
+      ...item,
+      evidenceType: "Observed"
+    })),
+
+    ...researched.map(item => ({
+      ...item,
+      evidenceType: "Researched"
+    }))
+  ];
+
+  return `
+    <div class="trust-evidence-list">
+      ${
+        allEvidence
+          .map(
+            evidence => `
+              <div class="trust-evidence-item">
+
+                <div class="trust-evidence-meta">
+                  <strong>
+                    ${escapeHtml(
+                      evidence.source?.name
+                      ?? "Unknown source"
+                    )}
+                  </strong>
+
+                  <span>
+                    ${escapeHtml(
+                      evidence.evidenceType
+                    )}
+                  </span>
+                </div>
+
+                <p>
+                  ${escapeHtml(
+                    evidence.rawClaim ?? ""
+                  )}
+                </p>
+
+                ${
+                  evidence.sourceUrl
+                    ? `
+                      <a
+                        href="${escapeHtml(
+                          evidence.sourceUrl
+                        )}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Open source
+                      </a>
+                    `
+                    : ""
+                }
+
+              </div>
+            `
+          )
+          .join("")
+      }
     </div>
   `;
 }

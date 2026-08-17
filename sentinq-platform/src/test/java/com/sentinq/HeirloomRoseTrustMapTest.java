@@ -12,6 +12,7 @@ import com.sentinq.trust.observations.MerchantEvidenceCollectionProviderRegistry
 import com.sentinq.trust.observations.MerchantEvidenceCollectionService;
 import com.sentinq.trust.observations.MerchantEvidenceFactory;
 import com.sentinq.trust.research.*;
+import com.sentinq.trust.synthesis.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -828,13 +829,44 @@ class HeirloomRoseTrustMapTest {
                         observationRegistry,
                         merchantEvidenceFactory
                 );
+        OpenAiMerchantEvidenceSynthesisProvider synthesisProvider =
+                new OpenAiMerchantEvidenceSynthesisProvider();
+
+        MerchantEvidenceSynthesisProviderRegistry synthesisRegistry =
+                new MerchantEvidenceSynthesisProviderRegistry(
+                        List.of(synthesisProvider)
+                );
+
+        MerchantEvidenceSynthesisService synthesisService =
+                new MerchantEvidenceSynthesisService(
+                        synthesisRegistry
+                );
+
+        OpenAiMerchantTargetedResearchProvider targetedResearchProvider =
+                new OpenAiMerchantTargetedResearchProvider();
+
+        MerchantTargetedResearchProviderRegistry targetedResearchRegistry =
+                new MerchantTargetedResearchProviderRegistry(
+                        List.of(targetedResearchProvider)
+                );
+
+        MerchantTargetedResearchService targetedResearchService =
+                new MerchantTargetedResearchService(
+                        targetedResearchRegistry
+                );
+
+        MerchantTargetedResearchEvidenceFactory targetedResearchEvidenceFactory =
+                new MerchantTargetedResearchEvidenceFactory();
 
         TrustMapOrchestrationService trustMapService =
                 new TrustMapOrchestrationService(
                         interpretationService,
                         researchService,
                         researchEvidenceFactory,
-                        evidenceCollectionService
+                        evidenceCollectionService,
+                        synthesisService,
+                        targetedResearchService,
+                        targetedResearchEvidenceFactory
                 );
 
         CandidateOffer offer =
@@ -874,7 +906,7 @@ class HeirloomRoseTrustMapTest {
         System.out.println();
         System.out.println("MERCHANT TRUST ASSESSMENT");
         System.out.println("Merchant: " + result.merchantName());
-        System.out.println(
+        /*System.out.println(
                 "Evidence assessments: "
                         + result.evidenceAssessments().size()
         );
@@ -946,6 +978,313 @@ class HeirloomRoseTrustMapTest {
 
         assertFalse(
                 result.evidenceAssessments().isEmpty()
+        );*/
+        System.out.println();
+        System.out.println(
+                "MERCHANT TRUST ASSESSMENT"
+        );
+
+        System.out.println(
+                "Merchant: "
+                        + result.merchantName()
+        );
+
+        System.out.println(
+                "Observed evidence: "
+                        + result.observedEvidence().size()
+        );
+
+        System.out.println(
+                "Researched evidence: "
+                        + result.researchedEvidence().size()
+        );
+
+        System.out.println(
+                "Themes: "
+                        + result.synthesis().themes().size()
+        );
+
+        System.out.println(
+                "Remaining material questions: "
+                        + result.synthesis()
+                        .materialQuestions()
+                        .size()
+        );
+
+        System.out.println(
+                "Confidence: "
+                        + result.synthesis().confidence()
+        );
+
+        result.synthesis()
+                .themes()
+                .forEach(theme -> {
+
+                    System.out.println();
+                    System.out.println(
+                            "Dimension: "
+                                    + theme.dimension()
+                    );
+
+                    System.out.println(
+                            "Signal: "
+                                    + theme.signal()
+                    );
+
+                    System.out.println(
+                            "Theme: "
+                                    + theme.theme()
+                    );
+                });
+
+        assertEquals(
+                "heirloom-roses",
+                result.merchantId()
+        );
+
+        assertFalse(
+                result.observedEvidence().isEmpty()
+        );
+
+        assertFalse(
+                result.synthesis().themes().isEmpty()
+        );
+    }
+
+    @Test
+    void shouldSynthesizeObservedMerchantEvidence() {
+
+        OpenAiProvider openAiProvider =
+                new OpenAiProvider();
+
+        /*
+         * STEP 1:
+         * Collect merchant evidence using the existing
+         * observation pipeline.
+         */
+        MerchantEvidenceCollectionProviderRegistry observationRegistry =
+                new MerchantEvidenceCollectionProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        MerchantEvidenceFactory evidenceFactory =
+                new MerchantEvidenceFactory();
+
+        MerchantEvidenceCollectionService evidenceCollectionService =
+                new MerchantEvidenceCollectionService(
+                        observationRegistry,
+                        evidenceFactory
+                );
+
+        CandidateOffer offer =
+                new CandidateOffer();
+
+        offer.setOfferId("offer-001");
+        offer.setMerchantId("heirloom-roses");
+        offer.setMerchantName("Heirloom Roses");
+        offer.setProductName("Desdemona Rose");
+        offer.setProductPriceCents(6500);
+
+        TrustContext context =
+                new TrustContext(
+                        "Find me a Desdemona rose for long-term garden planting",
+                        "GARDEN_PLANTS",
+                        "ROSE_BUSH",
+                        Map.of(
+                                "cultivar", "Desdemona",
+                                "propagationMethod", "OWN_ROOT"
+                        ),
+                        new BigDecimal("65.00"),
+                        DeliveryUrgency.NORMAL,
+                        MerchantFamiliarity.UNKNOWN,
+                        List.of(
+                                TrustDimension.PRODUCT_QUALITY,
+                                TrustDimension.PRODUCT_DURABILITY
+                        )
+                );
+
+        List<TrustEvidence> evidence =
+                evidenceCollectionService.collectEvidence(
+                        "openai",
+                        offer.getMerchantId(),
+                        offer.getMerchantName(),
+                        offer,
+                        context
+                );
+
+        System.out.println();
+        System.out.println("OBSERVATION COMPLETE");
+        System.out.println(
+                "Observed evidence count: "
+                        + evidence.size()
+        );
+
+        /*
+         * STEP 2:
+         * Feed the ENTIRE evidence landscape into
+         * one synthesis call.
+         */
+        OpenAiMerchantEvidenceSynthesisProvider synthesisProvider =
+                new OpenAiMerchantEvidenceSynthesisProvider();
+
+        MerchantEvidenceSynthesisProviderRegistry synthesisRegistry =
+                new MerchantEvidenceSynthesisProviderRegistry(
+                        List.of(synthesisProvider)
+                );
+
+        MerchantEvidenceSynthesisService synthesisService =
+                new MerchantEvidenceSynthesisService(
+                        synthesisRegistry
+                );
+
+        long synthesisStart =
+                System.currentTimeMillis();
+
+        MerchantEvidenceSynthesis synthesis =
+                synthesisService.synthesize(
+                        "openai",
+                        offer.getMerchantId(),
+                        offer.getMerchantName(),
+                        evidence,
+                        context
+                );
+
+        long synthesisDuration =
+                System.currentTimeMillis()
+                        - synthesisStart;
+
+        /*
+         * STEP 3:
+         * Inspect what the model did with the landscape.
+         */
+        System.out.println();
+        System.out.println("==============================");
+        System.out.println("MERCHANT EVIDENCE SYNTHESIS");
+        System.out.println("==============================");
+
+        System.out.println(
+                "Merchant: "
+                        + synthesis.merchantName()
+        );
+
+        System.out.println(
+                "Observed evidence: "
+                        + evidence.size()
+        );
+
+        System.out.println(
+                "Synthesized themes: "
+                        + synthesis.themes().size()
+        );
+
+        System.out.println(
+                "Material questions: "
+                        + synthesis.materialQuestions().size()
+        );
+
+        System.out.println(
+                "Synthesis confidence: "
+                        + synthesis.confidence()
+        );
+
+        System.out.println(
+                "Synthesis duration: "
+                        + synthesisDuration
+                        + " ms"
+        );
+
+        System.out.println();
+
+        /*
+         * THEMES
+         */
+        synthesis.themes().forEach(
+                theme -> {
+
+                    System.out.println("THEME");
+                    System.out.println(
+                            "Dimension: "
+                                    + theme.dimension()
+                    );
+
+                    System.out.println(
+                            "Theme: "
+                                    + theme.theme()
+                    );
+
+                    System.out.println(
+                            "Signal: "
+                                    + theme.signal()
+                    );
+
+                    System.out.println(
+                            "Evidence IDs: "
+                                    + theme.evidenceIds()
+                    );
+
+                    System.out.println();
+                }
+        );
+
+        /*
+         * MATERIAL QUESTIONS
+         */
+        synthesis.materialQuestions().forEach(
+                question -> {
+
+                    System.out.println(
+                            "MATERIAL QUESTION"
+                    );
+
+                    System.out.println(
+                            "Dimension: "
+                                    + question.dimension()
+                    );
+
+                    System.out.println(
+                            "Context type: "
+                                    + question.contextType()
+                    );
+
+                    System.out.println(
+                            "Question: "
+                                    + question.question()
+                    );
+
+                    System.out.println(
+                            "Reason: "
+                                    + question.reason()
+                    );
+
+                    System.out.println();
+                }
+        );
+
+        /*
+         * Basic structural assertions.
+         *
+         * Don't assert an exact number of themes/questions yet.
+         * We're still learning what good synthesis behavior
+         * looks like.
+         */
+        assertNotNull(synthesis);
+
+        assertEquals(
+                "heirloom-roses",
+                synthesis.merchantId()
+        );
+
+        assertEquals(
+                "Heirloom Roses",
+                synthesis.merchantName()
+        );
+
+        assertFalse(
+                synthesis.themes().isEmpty()
+        );
+
+        assertFalse(
+                synthesis.supportingEvidenceIds().isEmpty()
         );
     }
 }

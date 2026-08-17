@@ -23,6 +23,9 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service
 public class ShoppingOrchestrationService {
@@ -232,39 +235,19 @@ public class ShoppingOrchestrationService {
                         .map(candidateOfferFactory::create)
                         .toList();
 
-        List<TrustAssessedCandidate> trustAssessedCandidates =
-                candidates.stream()
-                        .map(candidate ->
-                                assessCandidateTrust(
-                                        agent.getProvider(),
-                                        candidate,
-                                        goal,
-                                        preferences
-                                )
-                        )
-                        .toList();
-
-        List<ResolvedCandidate> resolvedCandidates =
-                trustAssessedCandidates.stream()
-                        .map(trustAssessed ->
-                                resolveCandidate(
-                                        trustAssessed.candidate(),
-                                        mandate
-                                )
-                        )
-                        .toList();
-
-        /*List<ResolvedCandidate> resolvedCandidates =
-                candidates.stream()
-                        .map(candidate ->
-                                resolveCandidate(
-                                        candidate,
-                                        mandate
-                                )
-                        )
-                        .toList();
-
+        /*
+         * Resolve first.
+         * Cheap transaction checks happen before expensive Trust Maps.
          */
+        List<ResolvedCandidate> resolvedCandidates =
+                candidates.stream()
+                        .map(candidate ->
+                                resolveCandidate(
+                                        candidate,
+                                        mandate
+                                )
+                        )
+                        .toList();
 
         auditService.recordEvent(
                 trace.getTraceId(),
@@ -274,14 +257,108 @@ public class ShoppingOrchestrationService {
                 resolvedCandidates
         );
 
-        Optional<ResolvedCandidate> selectedCandidate =
+        /*
+         * Keep only candidates that survived the current
+         * resolution / mandate checks.
+         */
+        List<ResolvedCandidate> viableCandidates =
                 resolvedCandidates.stream()
-                        .filter(this::isExecutable)
+                        .filter(candidate ->
+                                isPreliminarilyViable(
+                                        candidate,
+                                        mandate
+                                )
+                        )
+                        .toList();
+        /*
+         * MVP reasoning budget.
+         *
+         * For now we keep at most 3 preliminarily viable contenders.
+         * Goal-fit ranking will replace first-3 selection later.
+         */
+        List<ResolvedCandidate> shortlistedCandidates =
+                viableCandidates.stream()
+                        .limit(3)
+                        .toList();
+
+        /*
+         * Expensive Trust Maps runs only on shortlisted contenders.
+         *
+         * Merchant assessments run concurrently, but each merchant's
+         * internal Trust Map now uses the bounded:
+         *
+         * OBSERVE
+         * → SYNTHESIZE
+         * → ONE TARGETED RESEARCH ROUND
+         * → FINAL SYNTHESIS
+         *
+         * pipeline.
+         */
+        List<TrustAssessedCandidate> trustAssessedCandidates;
+
+        if (shortlistedCandidates.isEmpty()) {
+
+            trustAssessedCandidates =
+                    List.of();
+
+        } else {
+
+            ExecutorService trustMapExecutor =
+                    Executors.newFixedThreadPool(
+                            Math.min(
+                                    3,
+                                    shortlistedCandidates.size()
+                            )
+                    );
+
+            try {
+                List<CompletableFuture<TrustAssessedCandidate>> trustMapFutures =
+                        shortlistedCandidates.stream()
+                                .map(resolved ->
+                                        CompletableFuture.supplyAsync(
+                                                () ->
+                                                        assessCandidateTrust(
+                                                                agent.getProvider(),
+                                                                resolved.offer(),
+                                                                goal,
+                                                                preferences
+                                                        ),
+                                                trustMapExecutor
+                                        )
+                                )
+                                .toList();
+
+                trustAssessedCandidates =
+                        trustMapFutures.stream()
+                                .map(CompletableFuture::join)
+                                .toList();
+
+            } finally {
+                trustMapExecutor.shutdown();
+            }
+        }
+
+        /*
+         * Temporary MVP selection.
+         *
+         * For now choose the cheapest preliminarily viable
+         * shortlisted candidate.
+         *
+         * This will later become Recommendation Reasoning:
+         *
+         * goal fit
+         * + Trust Map
+         * + transaction viability
+         * → selected candidate
+         */
+        Optional<ResolvedCandidate> selectedCandidate =
+                shortlistedCandidates.stream()
                         .min(
                                 Comparator.comparing(
                                         this::resolvedTotal
                                 )
                         );
+
         ShoppingOrchestrationResult result =
                 new ShoppingOrchestrationResult(
                         mandate,
@@ -295,8 +372,8 @@ public class ShoppingOrchestrationService {
                 AuditEventType.FINAL_DECISION,
                 "ShoppingOrchestrationService",
                 selectedCandidate.isPresent()
-                        ? "Executable candidate selected."
-                        : "No executable candidate was found.",
+                        ? "Shortlisted candidate selected."
+                        : "No preliminarily viable candidate was found.",
                 result
         );
 
@@ -305,6 +382,25 @@ public class ShoppingOrchestrationService {
         );
 
         return result;
+    }
+
+    private boolean isPreliminarilyViable(
+            ResolvedCandidate candidate,
+            MandateEnvelope mandate
+    ) {
+        ResolutionResult resolution = candidate.resolution();
+
+        if (!resolution.isInventoryAvailable()) {
+            return false;
+        }
+
+        if (mandate.getMaximumTotalCents() != null
+                && resolution.getResolvedTotalCents() != null
+                && resolution.getResolvedTotalCents() > mandate.getMaximumTotalCents()) {
+            return false;
+        }
+
+        return true;
     }
 
     private TrustAssessedCandidate assessCandidateTrust(

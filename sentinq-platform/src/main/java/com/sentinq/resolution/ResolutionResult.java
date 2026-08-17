@@ -101,5 +101,6 @@ public class ResolutionResult {
     public void setWarnings(List<String> warnings) {
         this.warnings = warnings;
     }
+
 // Generate getters and setters
 }
