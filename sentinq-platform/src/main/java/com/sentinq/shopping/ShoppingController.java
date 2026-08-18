@@ -34,7 +34,7 @@ public class ShoppingController {
     }
 
     @PostMapping(
-            value = "/api/shopping/orchestrate-stream",
+            value = "/orchestrate-stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE
     )
     public SseEmitter orchestrateStream(
