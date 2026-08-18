@@ -570,50 +570,194 @@ function buildGoalText(formInput) {
  * the missing information and continue.
  */
 async function callShoppingOrchestration(
-        requestBody
+  requestBody
 ) {
   const response =
-      await fetch(
-          "/api/shopping/orchestrate",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(
-                requestBody
-            )
-          }
-      );
+    await fetch(
+      "/api/shopping/orchestrate-stream",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream"
+        },
+        body: JSON.stringify(
+          requestBody
+        )
+      }
+    );
 
-  const responseBody =
-      await response.json();
-
-  /*
-   * Clarification is a valid Sentinq workflow state.
-   * Return the questions to the UI instead of throwing an error.
-   */
-  if (
-      response.status === 422 &&
-      responseBody.status ===
-      "CLARIFICATION_REQUIRED"
-  ) {
-    return responseBody;
-  }
-
-  /*
-   * Any other non-success response represents an
-   * actual orchestration or platform failure.
-   */
   if (!response.ok) {
+    const errorText =
+      await response.text();
+
     throw new Error(
-        responseBody.message ||
-        "Sentinq could not complete the request."
+      errorText ||
+      `HTTP ${response.status}`
     );
   }
 
-  return responseBody;
+  if (!response.body) {
+    throw new Error(
+      "Streaming response body is unavailable."
+    );
+  }
+
+  const reader =
+    response.body.getReader();
+
+  const decoder =
+    new TextDecoder();
+
+  let buffer = "";
+  let completedResult = null;
+
+  while (true) {
+    const {
+      value,
+      done
+    } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(
+      value,
+      {
+        stream: true
+      }
+    );
+
+    /*
+     * SSE events are separated by a blank line.
+     */
+    const events =
+      buffer.split(/\r?\n\r?\n/);
+
+    /*
+     * Keep the final incomplete event in the buffer.
+     */
+    buffer =
+      events.pop() ?? "";
+
+    for (const eventBlock of events) {
+      const event =
+        parseSseEvent(
+          eventBlock
+        );
+
+      if (!event) {
+        continue;
+      }
+
+      switch (event.event) {
+
+        case "status":
+          if (event.data) {
+            elements.runStatus.textContent =
+              event.data;
+          }
+          break;
+
+        case "heartbeat":
+          /*
+           * Intentionally do nothing.
+           *
+           * Its job is simply to keep the
+           * Railway connection alive.
+           */
+          break;
+
+        case "complete":
+          if (!event.data) {
+            throw new Error(
+              "Orchestration completed without a result."
+            );
+          }
+
+          completedResult =
+            JSON.parse(
+              event.data
+            );
+
+          break;
+
+        case "error":
+          throw new Error(
+            event.data ||
+            "Shopping orchestration failed."
+          );
+
+        default:
+          break;
+      }
+    }
+
+    if (completedResult) {
+      /*
+       * We already have the final payload.
+       * No need to wait for the stream to close.
+       */
+      await reader.cancel();
+
+      return completedResult;
+    }
+  }
+
+  if (!completedResult) {
+    throw new Error(
+      "Streaming orchestration ended before a final result was received."
+    );
+  }
+
+  return completedResult;
 }
+
+function parseSseEvent(
+  eventBlock
+) {
+  if (!eventBlock?.trim()) {
+    return null;
+  }
+
+  let eventName =
+    "message";
+
+  const dataLines = [];
+
+  eventBlock
+    .split(/\r?\n/)
+    .forEach(line => {
+
+      if (
+        line.startsWith("event:")
+      ) {
+        eventName =
+          line
+            .slice(6)
+            .trim();
+
+        return;
+      }
+
+      if (
+        line.startsWith("data:")
+      ) {
+        dataLines.push(
+          line
+            .slice(5)
+            .trimStart()
+        );
+      }
+    });
+
+  return {
+    event: eventName,
+    data: dataLines.join("\n")
+  };
+}
+
 
 function setOrchestrationLoadingState(isLoading) {
   elements.runButton.disabled = isLoading;
