@@ -8,10 +8,16 @@ import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.*;
 import com.sentinq.trust.interpretation.EvidenceInterpretationProviderRegistry;
 import com.sentinq.trust.interpretation.EvidenceInterpretationService;
-import com.sentinq.trust.observations.MerchantEvidenceCollectionProviderRegistry;
-import com.sentinq.trust.observations.MerchantEvidenceCollectionService;
-import com.sentinq.trust.observations.MerchantEvidenceFactory;
-import com.sentinq.trust.observations.ClaudeMerchantEvidenceCollectionProvider;
+import com.sentinq.trust.observations.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import com.sentinq.trust.research.*;
 import com.sentinq.trust.synthesis.*;
 import org.junit.jupiter.api.Test;
@@ -1259,6 +1265,280 @@ class HeirloomRoseTrustMapTest {
         );
     }
 
+    @Test
+    void shouldAssessMerchantFromObservedEvidenceWithGemini() {
+
+        ObjectMapper objectMapper =
+                new ObjectMapper();
+
+        /*
+         * Legacy constructor dependencies.
+         *
+         * These are not used by the optimized merchant-level
+         * Trust Map path, so keep the existing OpenAI provider
+         * here for now.
+         */
+        OpenAiProvider openAiProvider =
+                new OpenAiProvider();
+
+        EvidenceInterpretationProviderRegistry interpretationRegistry =
+                new EvidenceInterpretationProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        ContextResearchProviderRegistry researchRegistry =
+                new ContextResearchProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        EvidenceInterpretationService interpretationService =
+                new EvidenceInterpretationService(
+                        interpretationRegistry
+                );
+
+        ContextResearchService researchService =
+                new ContextResearchService(
+                        researchRegistry
+                );
+
+        ContextResearchEvidenceFactory researchEvidenceFactory =
+                new ContextResearchEvidenceFactory();
+
+
+        /*
+         * GEMINI — OBSERVATION
+         */
+        GeminiMerchantEvidenceCollectionProvider observationProvider =
+                new GeminiMerchantEvidenceCollectionProvider(
+                        objectMapper
+                );
+
+        MerchantEvidenceCollectionProviderRegistry observationRegistry =
+                new MerchantEvidenceCollectionProviderRegistry(
+                        List.of(
+                                observationProvider
+                        )
+                );
+
+        MerchantEvidenceFactory merchantEvidenceFactory =
+                new MerchantEvidenceFactory();
+
+        MerchantEvidenceCollectionService evidenceCollectionService =
+                new MerchantEvidenceCollectionService(
+                        observationRegistry,
+                        merchantEvidenceFactory
+                );
+
+
+        /*
+         * GEMINI — INITIAL SYNTHESIS + REFINEMENT
+         */
+        GeminiMerchantEvidenceSynthesisProvider synthesisProvider =
+                new GeminiMerchantEvidenceSynthesisProvider(
+                        objectMapper
+                );
+
+        MerchantEvidenceSynthesisProviderRegistry synthesisRegistry =
+                new MerchantEvidenceSynthesisProviderRegistry(
+                        List.of(
+                                synthesisProvider
+                        )
+                );
+
+        MerchantEvidenceSynthesisService synthesisService =
+                new MerchantEvidenceSynthesisService(
+                        synthesisRegistry
+                );
+
+
+        /*
+         * GEMINI — TARGETED RESEARCH
+         */
+        GeminiMerchantTargetedResearchProvider targetedResearchProvider =
+                new GeminiMerchantTargetedResearchProvider(
+                        objectMapper
+                );
+
+        MerchantTargetedResearchProviderRegistry targetedResearchRegistry =
+                new MerchantTargetedResearchProviderRegistry(
+                        List.of(
+                                targetedResearchProvider
+                        )
+                );
+
+        MerchantTargetedResearchService targetedResearchService =
+                new MerchantTargetedResearchService(
+                        targetedResearchRegistry
+                );
+
+        MerchantTargetedResearchEvidenceFactory targetedResearchEvidenceFactory =
+                new MerchantTargetedResearchEvidenceFactory();
+
+
+        /*
+         * SAME SENTINQ TRUST MAP ORCHESTRATION
+         */
+        TrustMapOrchestrationService trustMapService =
+                new TrustMapOrchestrationService(
+                        interpretationService,
+                        researchService,
+                        researchEvidenceFactory,
+                        evidenceCollectionService,
+                        synthesisService,
+                        targetedResearchService,
+                        targetedResearchEvidenceFactory
+                );
+
+
+        /*
+         * SAME MERCHANT / PRODUCT TEST
+         */
+        CandidateOffer offer =
+                new CandidateOffer();
+
+        offer.setOfferId(
+                "offer-001"
+        );
+
+        offer.setMerchantId(
+                "heirloom-roses"
+        );
+
+        offer.setMerchantName(
+                "Heirloom Roses"
+        );
+
+        offer.setProductName(
+                "Desdemona Rose"
+        );
+
+        offer.setProductPriceCents(
+                6500
+        );
+
+
+        /*
+         * SAME TRUST CONTEXT
+         */
+        TrustContext context =
+                new TrustContext(
+                        "Find me a Desdemona rose for long-term garden planting",
+                        "GARDEN_PLANTS",
+                        "ROSE_BUSH",
+                        Map.of(
+                                "cultivar",
+                                "Desdemona",
+                                "propagationMethod",
+                                "OWN_ROOT"
+                        ),
+                        new BigDecimal(
+                                "65.00"
+                        ),
+                        DeliveryUrgency.NORMAL,
+                        MerchantFamiliarity.UNKNOWN,
+                        List.of(
+                                TrustDimension.PRODUCT_QUALITY,
+                                TrustDimension.PRODUCT_DURABILITY
+                        )
+                );
+
+
+        /*
+         * RUN GEMINI TRUST MAP
+         */
+        MerchantTrustAssessment result =
+                trustMapService.assessMerchant(
+                        "gemini",
+                        offer,
+                        context
+                );
+
+
+        /*
+         * OUTPUT
+         */
+        System.out.println();
+        System.out.println(
+                "GEMINI MERCHANT TRUST ASSESSMENT"
+        );
+
+        System.out.println(
+                "Merchant: "
+                        + result.merchantName()
+        );
+
+        System.out.println(
+                "Observed evidence: "
+                        + result.observedEvidence().size()
+        );
+
+        System.out.println(
+                "Researched evidence: "
+                        + result.researchedEvidence().size()
+        );
+
+        System.out.println(
+                "Themes: "
+                        + result.synthesis()
+                        .themes()
+                        .size()
+        );
+
+        System.out.println(
+                "Remaining material questions: "
+                        + result.synthesis()
+                        .materialQuestions()
+                        .size()
+        );
+
+        System.out.println(
+                "Confidence: "
+                        + result.synthesis()
+                        .confidence()
+        );
+
+        result.synthesis()
+                .themes()
+                .forEach(theme -> {
+
+                    System.out.println();
+
+                    System.out.println(
+                            "Dimension: "
+                                    + theme.dimension()
+                    );
+
+                    System.out.println(
+                            "Signal: "
+                                    + theme.signal()
+                    );
+
+                    System.out.println(
+                            "Theme: "
+                                    + theme.theme()
+                    );
+                });
+
+
+        /*
+         * ASSERTIONS
+         */
+        assertEquals(
+                "heirloom-roses",
+                result.merchantId()
+        );
+
+        assertFalse(
+                result.observedEvidence()
+                        .isEmpty()
+        );
+
+        assertFalse(
+                result.synthesis()
+                        .themes()
+                        .isEmpty()
+        );
+    }
 
     @Test
     void shouldSynthesizeObservedMerchantEvidence() {

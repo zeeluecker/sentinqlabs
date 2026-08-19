@@ -402,4 +402,170 @@ The next milestone is no longer proving that Trust Maps work.
 
 It is making the Trust Map orchestration **production-resilient** while preserving the model-independent architecture that has now been validated across GPT, Claude, and Gemini.
 
+08/19/2026
 
+## Day 10 — Trust Maps: Multi-Provider Validation and Inference Economics
+
+### Completed
+
+- Completed the Gemini implementation of the optimized Sentinq Trust Maps architecture.
+- Added Gemini implementations for:
+    - merchant evidence collection
+    - merchant evidence synthesis
+    - bounded targeted research
+    - post-research synthesis refinement
+- Completed equivalent Trust Maps implementations across all three supported reasoning providers:
+    - OpenAI
+    - Anthropic Claude
+    - Google Gemini
+- Preserved a provider-independent Trust Maps orchestration layer so the shopping orchestrator and Sentinq domain model do not depend on any individual LLM provider.
+- Standardized structured JSON contracts across providers for:
+    - representative evidence observations
+    - merchant-level synthesis
+    - MaterialTrustQuestions
+    - targeted research findings
+    - refined Trust Map synthesis
+- Tightened provider prompts to enforce Sentinq's existing domain objects and enum values rather than allowing models to invent provider-specific schemas.
+- Added bounded research behavior:
+    - representative evidence collection rather than exhaustive research
+    - synthesis before additional research
+    - targeted research only for MaterialTrustQuestions
+    - maximum research findings
+    - one bounded research round
+    - refinement of the existing synthesis rather than reconstructing the Trust Map from scratch
+- Validated the complete Gemini Trust Maps pipeline against Heirloom Roses.
+- Gemini successfully produced a contextual merchant assessment from:
+    - 6 representative observations
+    - 1 MaterialTrustQuestion
+    - 1 targeted research finding
+    - 2 final Trust Map themes
+- Ran the same optimized Trust Maps architecture across OpenAI, Claude, and Gemini.
+- Confirmed meaningful provider-level performance differences:
+    - Claude currently has the lowest Trust Maps latency.
+    - OpenAI sits between Claude and Gemini.
+    - Gemini currently has the highest latency.
+- Confirmed that provider choice can therefore become an orchestration decision based on capability, latency, cost, and task requirements rather than an architectural dependency.
+
+### Architecture
+
+The optimized Trust Maps flow is now:
+
+`CONSUMER GOAL`
+→ `TRUST CONTEXT`
+→ `REPRESENTATIVE EVIDENCE OBSERVATION`
+→ `EVIDENCE SYNTHESIS`
+→ `MATERIAL TRUST QUESTIONS`
+→ `BOUNDED TARGETED RESEARCH`
+→ `SYNTHESIS REFINEMENT`
+→ `MERCHANT TRUST ASSESSMENT`
+
+The key optimization is progressive reasoning depth.
+
+Sentinq does not deeply research every piece of evidence or every possible trust question.
+
+Instead:
+
+1. Observe enough representative evidence to understand the evidence landscape.
+2. Synthesize recurring themes, disagreement, and uncertainty.
+3. Identify only uncertainty that could materially change the consumer's trust assessment.
+4. Spend additional web research only on those MaterialTrustQuestions.
+5. Refine the established synthesis using the newly researched evidence.
+6. Stop after the bounded research round rather than recursively searching for perfect knowledge.
+
+### Key Observation
+
+**Inference economics is product design.**
+
+The first Trust Maps architecture demonstrated that contextual trust reasoning was possible, but performing deep interpretation and research across every evidence item created unnecessary model calls, latency, and cost.
+
+The optimization work changed the reasoning strategy itself.
+
+Instead of:
+
+`collect everything → deeply interpret everything → research every uncertainty`
+
+Trust Maps now follows:
+
+`observe broadly → synthesize → identify material uncertainty → spend reasoning only where it can change the decision`
+
+This is not merely a backend performance optimization.
+
+For an interactive agentic-commerce product, latency and inference cost constrain which reasoning architectures are viable. The amount of intelligence applied at each stage therefore becomes a product-design decision.
+
+### Multi-Provider Finding
+
+Trust Maps are now model-portable.
+
+OpenAI, Claude, and Gemini can execute the same Sentinq-defined reasoning architecture while remaining behind provider-specific implementations.
+
+The models are not the architecture.
+
+Sentinq owns:
+
+- the trust ontology
+- evidence provenance
+- consumer context
+- MaterialTrustQuestions
+- research boundaries
+- synthesis contracts
+- orchestration
+- decision semantics
+
+The underlying model is a replaceable reasoning engine.
+
+Running the same architecture across three providers also exposed meaningful differences in inference latency. Claude currently completes the Trust Maps pipeline fastest, while Gemini is currently the slowest.
+
+This creates another orchestration opportunity: provider selection can eventually be optimized by task based on latency, cost, capability, and reliability rather than selecting one model globally.
+
+### Reliability Finding
+
+Live orchestration also exposed an additional production concern.
+
+Long-running model calls and structured-output generation create failure modes that do not appear in purely deterministic application code, including truncated JSON, transient provider failures, network interruptions, and incomplete streaming responses.
+
+A production Trust Maps system therefore needs to treat model failure as a normal infrastructure condition rather than allowing one failed merchant assessment to terminate an entire shopping orchestration.
+
+Provider resilience and graceful degradation are now part of the remaining production-hardening work.
+
+### Reflection
+
+Trust Maps began as a thesis about consumer trust in agentic commerce.
+
+Building it exposed a deeper systems problem.
+
+An agent cannot simply search more, reason more, and research more every time uncertainty exists. That approach becomes expensive, slow, and eventually unusable.
+
+The system needs to know **where uncertainty matters enough to justify additional intelligence**.
+
+That principle now exists directly in the architecture.
+
+Trust Maps have also crossed an important implementation boundary: the architecture is no longer coupled to the behavior of a single frontier model.
+
+Three different reasoning providers can now operate underneath the same Sentinq trust contracts.
+
+The emerging principle is:
+
+> **Reason broadly enough to understand the decision, but spend reasoning depth progressively where it can materially change the outcome.**
+
+### Next — Late Binding Resolution Layer (LBRL)
+
+With Trust Maps implemented and validated across OpenAI, Claude, and Gemini, the next major Sentinq architecture layer is the **Late Binding Resolution Layer (LBRL)**.
+
+LBRL will investigate what should remain unresolved until the latest responsible moment before an agent executes a commerce action.
+
+Initial design work will map current agentic-commerce APIs, protocols, and payment capabilities to determine:
+
+- what each system already resolves
+- when that resolution occurs
+- which commerce decisions are bound too early
+- which decisions can safely remain unresolved
+- how merchant, checkout, wallet, credential, payment rail, fulfillment, and delegated authority interact
+- what capabilities remain missing between consumer intent and safe execution
+
+The first phase will be architecture and capability mapping before implementation.
+
+Trust Maps established whether an option should survive the trust decision.
+
+LBRL begins the next question:
+
+**Once an option survives trust and mandate constraints, what must be resolved — and what should remain unbound — before the agent is allowed to execute?**
