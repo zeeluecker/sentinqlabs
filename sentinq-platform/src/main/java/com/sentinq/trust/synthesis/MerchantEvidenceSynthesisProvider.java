@@ -2,7 +2,6 @@ package com.sentinq.trust.synthesis;
 
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
-import com.sentinq.trust.synthesis.MerchantEvidenceSynthesis;
 
 import java.util.List;
 
@@ -14,6 +13,14 @@ public interface MerchantEvidenceSynthesisProvider {
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
+            TrustContext context
+    );
+
+    MerchantEvidenceSynthesis refineSynthesis(
+            String merchantId,
+            String merchantName,
+            MerchantEvidenceSynthesis initialSynthesis,
+            List<TrustEvidence> researchedEvidence,
             TrustContext context
     );
 }

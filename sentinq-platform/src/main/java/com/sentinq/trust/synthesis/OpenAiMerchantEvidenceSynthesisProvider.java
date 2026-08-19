@@ -15,7 +15,8 @@ import java.util.List;
 public class OpenAiMerchantEvidenceSynthesisProvider
         implements MerchantEvidenceSynthesisProvider {
 
-    private static final String MODEL = "gpt-5";
+    private static final String SYNTHESIS_MODEL = "gpt-5";
+    private static final String REFINEMENT_MODEL = "gpt-5.4-mini";
 
     private final OpenAIClient openAIClient;
 
@@ -43,17 +44,23 @@ public class OpenAiMerchantEvidenceSynthesisProvider
                 context
         );
 
+        String prompt =
+                buildEvidenceSynthesisPrompt(
+                        merchantId,
+                        merchantName,
+                        evidence,
+                        context
+                );
+
+        System.out.println(
+                "[Synthesis] Prompt chars: "
+                        + prompt.length()
+        );
+
         StructuredResponseCreateParams<MerchantEvidenceSynthesis> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
-                        .input(
-                                buildEvidenceSynthesisPrompt(
-                                        merchantId,
-                                        merchantName,
-                                        evidence,
-                                        context
-                                )
-                        )
+                        .model(SYNTHESIS_MODEL)
+                        .input(prompt)
                         .text(
                                 MerchantEvidenceSynthesis.class
                         )
@@ -119,6 +126,26 @@ public class OpenAiMerchantEvidenceSynthesisProvider
             List<TrustEvidence> evidence,
             TrustContext context
     ) {
+        String formattedContext =
+                formatTrustContext(
+                        context
+                );
+
+        List<TrustEvidence> relevantEvidence =
+                evidence.stream()
+                        .filter(item ->
+                                context.importantDimensions()
+                                        .contains(
+                                                item.proposedDimension()
+                                        )
+                        )
+                        .toList();
+
+        String formattedEvidence =
+                formatEvidenceForSynthesis(
+                        relevantEvidence
+                );
+
         return """
             You are synthesizing a merchant Trust Map for Sentinq.
 
@@ -134,101 +161,345 @@ public class OpenAiMerchantEvidenceSynthesisProvider
             Evidence:
             %s
 
-            Your task is to understand the evidence landscape
-            across all supplied evidence.
+            Understand the evidence landscape across all supplied
+            evidence and return a bounded merchant-level synthesis.
 
-            Synthesis rules:
+            Rules:
 
             1. Group related evidence into a small number of meaningful
-               recurring themes.
+               themes. Do not create one theme per evidence item.
 
-            2. Do not create one theme per evidence item.
+            2. Preserve disagreement and uncertainty. Conflicting
+               evidence is part of the Trust Map.
 
-            3. Preserve disagreement between sources.
-               Conflicting evidence is part of the Trust Map.
+            3. Evidence volume is not proof. Repeated similar claims
+               should not automatically increase confidence.
 
-            4. Do not treat the number of similar claims as proof
-               that those claims are true.
+            4. Merchant first-party evidence establishes what the
+               merchant claims, promises, or describes. It is not
+               independent proof of performance.
 
-            5. Merchant first-party evidence may establish what the
-               merchant says, promises, or describes.
-               It must not be treated as independent proof that the
-               merchant consistently performs as claimed.
+            5. Independent customer, community, complaint, and expert
+               evidence may corroborate, contradict, qualify, or
+               contextualize merchant claims.
 
-            6. Independent customer, community, complaint, and expert
-               evidence may corroborate, contradict, qualify, or add
-               context to merchant claims.
+            6. Evaluate only the TrustDimensions marked important in
+               the supplied TrustContext. Other evidence may remain in
+               the record but must not create themes or research scope.
 
-            7. Evaluate evidence only in relation to the supplied
-               consumer context and relevant TrustDimensions.
+            7. A MaterialTrustQuestion must represent meaningful
+               conflict, ambiguity, or uncertainty whose resolution
+               could plausibly change this consumer's trust assessment.
 
-            8. Preserve uncertainty when the evidence does not support
-               a confident conclusion.
+            8. Do not create a MaterialTrustQuestion merely because a
+               merchant claim lacks independent verification or because
+               additional information might theoretically be useful.
 
-            9. A MaterialTrustQuestion must represent an unresolved
-               question whose answer could materially change the trust
-               assessment for this consumer or this purchase.
+            9. Prefer the smallest set of decision-relevant questions.
+               Combine overlapping questions and normally return no
+               more than one question per important TrustDimension.
+               Return zero when further research is unlikely to matter.
 
-            10. Do not generate additional research questions merely
-                because more information could theoretically be useful.
+            10. Evidence IDs in themes and supportingEvidenceIds must
+                come only from supplied evidence. Never invent IDs.
 
-            11. If the evidence is already sufficiently coherent,
-                return zero MaterialTrustQuestions.
+            11. Do not produce an overall merchant recommendation or
+                decide whether the consumer should buy.
 
-            12. supportingEvidenceIds may contain only evidence IDs
-                present in the supplied evidence.
+            12. confidence represents confidence in this synthesis of
+                the evidence landscape, not merchant trust overall.
 
-            13. Theme evidenceIds may contain only evidence IDs
-                present in the supplied evidence.
+            Return only MerchantEvidenceSynthesis.
 
-            14. Do not invent evidence IDs.
-
-            15. Do not produce an overall merchant recommendation.
-
-            16. Do not decide whether the consumer should buy.
-
-            17. confidence represents confidence in the synthesis of
-                this evidence landscape, not confidence in the merchant
-                overall.
-                
-            18. Create themes only for TrustDimensions identified as important
-                    in the supplied TrustContext.
-                
-            19. Evidence relating to other TrustDimensions may remain part of the
-                    underlying evidence record, but must not create additional themes
-                    or MaterialTrustQuestions in this synthesis.
-                
-            20. A MaterialTrustQuestion may only be created for one of the
-                    important TrustDimensions in the supplied TrustContext.
-                
-            21. Do not expand the scope of the Trust Map simply because supplied
-                    evidence contains interesting information about another dimension.
-                    
-            22. The absence of independent verification for a merchant claim
-                    does not by itself create a MaterialTrustQuestion.
-                
-            23. Create a MaterialTrustQuestion only when the existing evidence
-                    contains meaningful conflict, ambiguity, or uncertainty that
-                    could plausibly change the current trust assessment.
-                
-            24. Prefer the smallest set of questions necessary to resolve
-                    decision-relevant uncertainty.
-                
-            25. When multiple questions substantially overlap, combine them.
-                
-            26. Normally return no more than one MaterialTrustQuestion per
-                 important TrustDimension. Return zero when no further research
-                  is decision-relevant.
-
-            Return only the structured MerchantEvidenceSynthesis.
-
-            MerchantEvidenceSynthesis must preserve the supplied
-            merchantId and merchantName exactly.
+            Preserve merchantId and merchantName exactly.
             """.formatted(
                 merchantId,
                 merchantName,
-                context,
-                evidence
+                formattedContext,
+                formattedEvidence
+        );
+    }
+
+    private String formatEvidenceForSynthesis(
+            List<TrustEvidence> evidence
+    ) {
+        return evidence.stream()
+                .map(item -> """
+                Evidence ID: %s
+                Dimension: %s
+                Source: %s
+                Source type: %s
+                Independence: %s
+                Expertise: %s
+                Channel: %s
+                Horizon: %s
+                Claim: %s
+                """.formatted(
+                        item.evidenceId(),
+                        item.proposedDimension(),
+                        item.source().name(),
+                        item.source().type(),
+                        item.source().independence(),
+                        item.source().expertise(),
+                        item.channel(),
+                        item.evidenceHorizon(),
+                        item.rawClaim()
+                ))
+                .collect(
+                        java.util.stream.Collectors.joining(
+                                "\n---\n"
+                        )
+                );
+    }
+
+    private String formatTrustContext(
+            TrustContext context
+    ) {
+        return """
+            Goal: %s
+            Product category: %s
+            Product type: %s
+            Product attributes: %s
+            Transaction value: %s
+            Delivery urgency: %s
+            Merchant familiarity: %s
+            Important TrustDimensions: %s
+            """.formatted(
+                context.goal(),
+                context.productCategory(),
+                context.productType(),
+                context.productAttributes(),
+                context.transactionValue(),
+                context.deliveryUrgency(),
+                context.merchantFamiliarity(),
+                context.importantDimensions()
+        );
+    }
+
+    @Override
+    public MerchantEvidenceSynthesis refineSynthesis(
+            String merchantId,
+            String merchantName,
+            MerchantEvidenceSynthesis initialSynthesis,
+            List<TrustEvidence> researchedEvidence,
+            TrustContext context
+    ) {
+        if (initialSynthesis == null) {
+            throw new IllegalArgumentException(
+                    "Initial synthesis is required."
+            );
+        }
+
+        if (researchedEvidence == null) {
+            throw new IllegalArgumentException(
+                    "Researched evidence is required."
+            );
+        }
+        String prompt =
+                buildRefinementPrompt(
+                        merchantId,
+                        merchantName,
+                        initialSynthesis,
+                        researchedEvidence,
+                        context
+                );
+
+        System.out.println(
+                "[Refinement] Prompt chars: "
+                        + prompt.length()
+        );
+
+        StructuredResponseCreateParams<MerchantEvidenceSynthesis> params =
+                ResponseCreateParams.builder()
+                        .model(REFINEMENT_MODEL)
+                        .input(prompt).text(
+                                MerchantEvidenceSynthesis.class
+                        )
+                        .build();
+
+        StructuredResponse<MerchantEvidenceSynthesis> response =
+                openAIClient.responses()
+                        .create(params);
+
+        return response.output()
+                .stream()
+                .flatMap(outputItem ->
+                        outputItem.message().stream()
+                )
+                .flatMap(message ->
+                        message.content().stream()
+                )
+                .flatMap(content ->
+                        content.outputText().stream()
+                )
+                .findFirst()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "OpenAI returned no structured refined merchant synthesis."
+                        )
+                );
+    }
+
+    private String buildRefinementPrompt(
+            String merchantId,
+            String merchantName,
+            MerchantEvidenceSynthesis initialSynthesis,
+            List<TrustEvidence> researchedEvidence,
+            TrustContext context
+    ) {
+        String formattedContext =
+                formatTrustContext(
+                        context
+                );
+
+        String formattedInitialSynthesis =
+                formatSynthesisForRefinement(
+                        initialSynthesis
+                );
+
+        List<TrustEvidence> relevantResearch =
+                researchedEvidence.stream()
+                        .filter(item ->
+                                context.importantDimensions()
+                                        .contains(
+                                                item.proposedDimension()
+                                        )
+                        )
+                        .toList();
+
+        String formattedResearch =
+                formatEvidenceForSynthesis(
+                        relevantResearch
+                );
+
+        return """
+            You are refining an existing Sentinq merchant Trust Map
+            after one bounded targeted research round.
+
+            Merchant ID:
+            %s
+
+            Merchant:
+            %s
+
+            Consumer context:
+            %s
+
+            Existing synthesis:
+            %s
+
+            Newly researched evidence:
+            %s
+
+            Refinement rules:
+
+            1. Treat the existing synthesis as the established
+               interpretation of the original evidence landscape.
+
+            2. Do NOT reconstruct the Trust Map from scratch.
+
+            3. Evaluate only how the newly researched evidence
+               changes, strengthens, weakens, qualifies, or preserves
+               the existing themes and signals.
+
+            4. Preserve unaffected themes.
+
+            5. Update a theme only when the new evidence materially
+               affects its interpretation.
+
+            6. Resolve a MaterialTrustQuestion when the new evidence
+               materially answers it.
+
+            7. If uncertainty remains, preserve the question or
+               uncertainty. Do not create another research loop.
+
+            8. Do not expand into new TrustDimensions merely because
+               the research surfaced unrelated information.
+
+            9. New information may be incorporated when it directly
+               answers one of the supplied MaterialTrustQuestions.
+
+            10. Preserve original evidence IDs that remain relevant
+                to a refined theme, and add researched evidence IDs
+                when they materially support the updated conclusion.
+
+            11. Do not invent evidence IDs.
+
+            12. confidence represents confidence in the refined
+                synthesis, not merchant trust overall.
+
+            13. Do not make an overall merchant recommendation.
+
+            14. Do not decide whether the consumer should buy.
+
+            Return only MerchantEvidenceSynthesis.
+
+            Preserve merchantId and merchantName exactly.
+            """.formatted(
+                merchantId,
+                merchantName,
+                formattedContext,
+                formattedInitialSynthesis,
+                formattedResearch
+        );
+    }
+
+    private String formatSynthesisForRefinement(
+            MerchantEvidenceSynthesis synthesis
+    ) {
+        String themes =
+                synthesis.themes()
+                        .stream()
+                        .map(theme -> """
+                            Dimension: %s
+                            Signal: %s
+                            Theme: %s
+                            Evidence IDs: %s
+                            """.formatted(
+                                theme.dimension(),
+                                theme.signal(),
+                                theme.theme(),
+                                theme.evidenceIds()
+                        ))
+                        .collect(
+                                java.util.stream.Collectors.joining(
+                                        "\n---\n"
+                                )
+                        );
+
+        String questions =
+                synthesis.materialQuestions()
+                        .stream()
+                        .map(question -> """
+                            Dimension: %s
+                            Context type: %s
+                            Question: %s
+                            Reason: %s
+                            """.formatted(
+                                question.dimension(),
+                                question.contextType(),
+                                question.question(),
+                                question.reason()
+                        ))
+                        .collect(
+                                java.util.stream.Collectors.joining(
+                                        "\n---\n"
+                                )
+                        );
+
+        return """
+            Themes:
+            %s
+
+            Material questions:
+            %s
+
+            Confidence:
+            %s
+            """.formatted(
+                themes,
+                questions,
+                synthesis.confidence()
         );
     }
 }

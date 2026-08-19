@@ -36,4 +36,26 @@ public class MerchantEvidenceSynthesisService {
                 context
         );
     }
+
+    public MerchantEvidenceSynthesis refine(
+            String provider,
+            String merchantId,
+            String merchantName,
+            MerchantEvidenceSynthesis initialSynthesis,
+            List<TrustEvidence> researchedEvidence,
+            TrustContext context
+    ) {
+        MerchantEvidenceSynthesisProvider synthesisProvider =
+                providerRegistry.getProvider(
+                        provider
+                );
+
+        return synthesisProvider.refineSynthesis(
+                merchantId,
+                merchantName,
+                initialSynthesis,
+                researchedEvidence,
+                context
+        );
+    }
 }

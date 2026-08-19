@@ -74,23 +74,31 @@ public class OpenAiMerchantTargetedResearchProvider
                 openAIClient.responses()
                         .create(params);
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured targeted research decision."
+        MerchantTargetedResearchDecision decision =
+                response.output()
+                        .stream()
+                        .flatMap(outputItem ->
+                                outputItem.message().stream()
                         )
-                );
+                        .flatMap(message ->
+                                message.content().stream()
+                        )
+                        .flatMap(content ->
+                                content.outputText().stream()
+                        )
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "OpenAI returned no structured targeted research decision."
+                                )
+                        );
+
+        return new MerchantTargetedResearchDecision(
+                decision.findings()
+                        .stream()
+                        .limit(3)
+                        .toList()
+        );
     }
 
     private void validateInputs(
@@ -146,86 +154,173 @@ public class OpenAiMerchantTargetedResearchProvider
             MerchantEvidenceSynthesis synthesis,
             TrustContext context
     ) {
+        String formattedContext =
+                formatTrustContext(
+                        context
+                );
+
+        String formattedThemes =
+                formatThemes(
+                        synthesis
+                );
+
+        String formattedQuestions =
+                formatMaterialQuestions(
+                        synthesis
+                );
+
         return """
-                You are performing ONE bounded targeted research round
-                for a Sentinq merchant Trust Map.
+        You are performing ONE bounded targeted research round
+        for a Sentinq merchant Trust Map.
 
-                Merchant ID:
-                %s
+        Merchant ID:
+        %s
 
-                Merchant:
-                %s
+        Merchant:
+        %s
 
-                Consumer context:
-                %s
+        Consumer context:
+        %s
 
-                Important TrustDimensions:
-                %s
+        Current Trust Map themes:
+        %s
 
-                Existing evidence:
-                %s
+        Material questions:
+        %s
 
-                Current evidence synthesis:
-                %s
+        The current themes are the established synthesis of
+        the previously observed evidence.
 
-                Material questions to resolve:
-                %s
+        Your job is NOT to broadly research this merchant.
 
-                Research rules:
+        Your job is to find the minimum additional evidence
+        necessary to materially clarify the supplied questions.
 
-                1. Research ONLY the supplied MaterialTrustQuestions.
+        Research rules:
 
-                2. Do not invent additional research questions.
+        1. Research ONLY the supplied MaterialTrustQuestions.
 
-                3. Do not expand into other TrustDimensions.
+        2. Do not create or investigate additional questions
+           or TrustDimensions.
 
-                4. Prefer evidence that directly resolves, contradicts,
-                   qualifies, or materially clarifies the supplied questions.
+        3. Do not repeat broad merchant research already represented
+           by the current themes.
 
-                5. Prefer independent expert, community, review, complaint,
-                   or specialist evidence when independent verification matters.
+        4. Look specifically for evidence capable of changing,
+           strengthening, weakening, qualifying, or resolving the
+           current interpretation.
 
-                6. Merchant first-party sources may establish merchant
-                   claims, policies, product specifications, or promises,
-                   but must not be treated as independent proof of performance.
+        5. Prefer independent expert, community, review, complaint,
+           or specialist evidence when independent verification
+           is relevant.
 
-                7. Do not collect repetitive evidence merely to increase
-                   evidence volume.
+        6. Merchant first-party sources may clarify merchant
+           policies, specifications, or promises, but are not
+           independent proof of performance.
 
-                8. Return a small number of high-information findings.
+        7. Research is decision-bounded, not exhaustive.
+           Stop once additional searching is unlikely to materially
+           change the answer to a supplied question.
 
-                9. Every finding must identify the TrustDimension and
-                   ContextType of the material question it helps answer.
+        8. Do not gather multiple sources that establish
+           substantially the same fact. Prefer the strongest source.
 
-                10. Preserve uncertainty when research does not resolve
-                    a material question.
+        9. Return no more than 3 findings total.
 
-                11. Do not make an overall merchant recommendation.
+        10. Normally return no more than 2 findings for any
+            MaterialTrustQuestion.
 
-                12. Do not decide whether the consumer should buy.
+        11. A finding must directly answer, contradict, qualify,
+            or materially clarify a supplied question.
 
-                13. Findings must remain within the Important TrustDimensions
-                    supplied above.
+        12. If reliable evidence cannot resolve the question,
+            preserve the uncertainty rather than continuing to
+            search broadly.
 
-                14. A finding should answer or materially inform a supplied
-                    MaterialTrustQuestion. Do not return unrelated discoveries.
+        13. Every finding must identify the TrustDimension and
+            ContextType of the question it addresses.
 
-                15. Prefer the smallest evidence set necessary to resolve
-                    the material questions.
+        14. Do not make an overall merchant recommendation.
 
-                16. If a material question cannot be resolved reliably,
-                    preserve that uncertainty rather than filling the gap
-                    with weak evidence.
+        15. Do not decide whether the consumer should buy.
 
-                Return only MerchantTargetedResearchDecision.
-                """.formatted(
+        Return only MerchantTargetedResearchDecision.
+        """.formatted(
                 merchantId,
                 merchantName,
-                context,
-                context.importantDimensions(),
-                existingEvidence,
-                synthesis,
-                synthesis.materialQuestions()
+                formattedContext,
+                formattedThemes,
+                formattedQuestions
         );
+    }
+
+
+
+    private String formatTrustContext(
+            TrustContext context
+    ) {
+        return """
+            Goal: %s
+            Product category: %s
+            Product type: %s
+            Product attributes: %s
+            Transaction value: %s
+            Delivery urgency: %s
+            Merchant familiarity: %s
+            Important TrustDimensions: %s
+            """.formatted(
+                context.goal(),
+                context.productCategory(),
+                context.productType(),
+                context.productAttributes(),
+                context.transactionValue(),
+                context.deliveryUrgency(),
+                context.merchantFamiliarity(),
+                context.importantDimensions()
+        );
+    }
+
+    private String formatThemes(
+            MerchantEvidenceSynthesis synthesis
+    ) {
+        return synthesis.themes()
+                .stream()
+                .map(theme -> """
+                    Dimension: %s
+                    Signal: %s
+                    Theme: %s
+                    """.formatted(
+                        theme.dimension(),
+                        theme.signal(),
+                        theme.theme()
+                ))
+                .collect(
+                        java.util.stream.Collectors.joining(
+                                "\n---\n"
+                        )
+                );
+    }
+
+    private String formatMaterialQuestions(
+            MerchantEvidenceSynthesis synthesis
+    ) {
+        return synthesis.materialQuestions()
+                .stream()
+                .map(question -> """
+                    Dimension: %s
+                    Context type: %s
+                    Question: %s
+                    Why it matters: %s
+                    """.formatted(
+                        question.dimension(),
+                        question.contextType(),
+                        question.question(),
+                        question.reason()
+                ))
+                .collect(
+                        java.util.stream.Collectors.joining(
+                                "\n---\n"
+                        )
+                );
     }
 }

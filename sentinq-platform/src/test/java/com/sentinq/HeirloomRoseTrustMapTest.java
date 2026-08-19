@@ -11,6 +11,7 @@ import com.sentinq.trust.interpretation.EvidenceInterpretationService;
 import com.sentinq.trust.observations.MerchantEvidenceCollectionProviderRegistry;
 import com.sentinq.trust.observations.MerchantEvidenceCollectionService;
 import com.sentinq.trust.observations.MerchantEvidenceFactory;
+import com.sentinq.trust.observations.ClaudeMerchantEvidenceCollectionProvider;
 import com.sentinq.trust.research.*;
 import com.sentinq.trust.synthesis.*;
 import org.junit.jupiter.api.Test;
@@ -793,6 +794,8 @@ class HeirloomRoseTrustMapTest {
         OpenAiProvider openAiProvider =
                 new OpenAiProvider();
 
+
+
         EvidenceInterpretationProviderRegistry interpretationRegistry =
                 new EvidenceInterpretationProviderRegistry(
                         List.of(openAiProvider)
@@ -858,6 +861,7 @@ class HeirloomRoseTrustMapTest {
         MerchantTargetedResearchEvidenceFactory targetedResearchEvidenceFactory =
                 new MerchantTargetedResearchEvidenceFactory();
 
+
         TrustMapOrchestrationService trustMapService =
                 new TrustMapOrchestrationService(
                         interpretationService,
@@ -868,6 +872,8 @@ class HeirloomRoseTrustMapTest {
                         targetedResearchService,
                         targetedResearchEvidenceFactory
                 );
+
+
 
         CandidateOffer offer =
                 new CandidateOffer();
@@ -906,79 +912,7 @@ class HeirloomRoseTrustMapTest {
         System.out.println();
         System.out.println("MERCHANT TRUST ASSESSMENT");
         System.out.println("Merchant: " + result.merchantName());
-        /*System.out.println(
-                "Evidence assessments: "
-                        + result.evidenceAssessments().size()
-        );
-        System.out.println();
 
-        result.evidenceAssessments().forEach(
-                assessment -> {
-                    System.out.println(
-                            "Original evidence: "
-                                    + assessment.originalEvidence().rawClaim()
-                    );
-
-                    System.out.println(
-                            "Dimension: "
-                                    + assessment.originalEvidence()
-                                    .proposedDimension()
-                    );
-
-                    System.out.println(
-                            "Final interpretation status: "
-                                    + assessment.interpretation().status()
-                    );
-
-                    System.out.println(
-                            "Final signal: "
-                                    + assessment.interpretation().signal()
-                    );
-
-                    System.out.println(
-                            "Apparent meaning: "
-                                    + assessment.interpretation().apparentMeaning()
-                    );
-
-                    System.out.println(
-                            "Contextual meaning: "
-                                    + assessment.interpretation().contextualMeaning()
-                    );
-
-                    System.out.println(
-                            "Confidence: "
-                                    + assessment.interpretation().confidence()
-                    );
-
-                    System.out.println(
-                            "Research rounds: "
-                                    + assessment.researchRounds()
-                    );
-
-                    System.out.println(
-                            "Researched evidence count: "
-                                    + assessment.researchedEvidence().size()
-                    );
-
-                    System.out.println(
-                            "Context findings count: "
-                                    + assessment.contextFindings().size()
-                    );
-
-                    System.out.println();
-                    System.out.println("--------------------------");
-                    System.out.println();
-                }
-        );
-
-        assertEquals(
-                "heirloom-roses",
-                result.merchantId()
-        );
-
-        assertFalse(
-                result.evidenceAssessments().isEmpty()
-        );*/
         System.out.println();
         System.out.println(
                 "MERCHANT TRUST ASSESSMENT"
@@ -1050,6 +984,281 @@ class HeirloomRoseTrustMapTest {
                 result.synthesis().themes().isEmpty()
         );
     }
+
+    @Test
+    void shouldAssessMerchantFromObservedEvidenceWithClaude() {
+
+        ObjectMapper objectMapper =
+                new ObjectMapper();
+
+        /*
+         * Legacy constructor dependencies.
+         * The optimized merchant-level Trust Map path does not use
+         * these evidence-by-evidence services directly, so keep
+         * OpenAI here for now.
+         */
+        OpenAiProvider openAiProvider =
+                new OpenAiProvider();
+
+        EvidenceInterpretationProviderRegistry interpretationRegistry =
+                new EvidenceInterpretationProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        ContextResearchProviderRegistry researchRegistry =
+                new ContextResearchProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        EvidenceInterpretationService interpretationService =
+                new EvidenceInterpretationService(
+                        interpretationRegistry
+                );
+
+        ContextResearchService researchService =
+                new ContextResearchService(
+                        researchRegistry
+                );
+
+        ContextResearchEvidenceFactory researchEvidenceFactory =
+                new ContextResearchEvidenceFactory();
+
+
+        /*
+         * CLAUDE — OBSERVATION
+         */
+        ClaudeMerchantEvidenceCollectionProvider observationProvider =
+                new ClaudeMerchantEvidenceCollectionProvider(
+                        objectMapper
+                );
+
+        MerchantEvidenceCollectionProviderRegistry observationRegistry =
+                new MerchantEvidenceCollectionProviderRegistry(
+                        List.of(
+                                observationProvider
+                        )
+                );
+
+        MerchantEvidenceFactory merchantEvidenceFactory =
+                new MerchantEvidenceFactory();
+
+        MerchantEvidenceCollectionService evidenceCollectionService =
+                new MerchantEvidenceCollectionService(
+                        observationRegistry,
+                        merchantEvidenceFactory
+                );
+
+
+        /*
+         * CLAUDE — SYNTHESIS + REFINEMENT
+         */
+        ClaudeMerchantEvidenceSynthesisProvider synthesisProvider =
+                new ClaudeMerchantEvidenceSynthesisProvider(
+                        objectMapper
+                );
+
+        MerchantEvidenceSynthesisProviderRegistry synthesisRegistry =
+                new MerchantEvidenceSynthesisProviderRegistry(
+                        List.of(
+                                synthesisProvider
+                        )
+                );
+
+        MerchantEvidenceSynthesisService synthesisService =
+                new MerchantEvidenceSynthesisService(
+                        synthesisRegistry
+                );
+
+
+        /*
+         * CLAUDE — TARGETED RESEARCH
+         */
+        ClaudeMerchantTargetedResearchProvider targetedResearchProvider =
+                new ClaudeMerchantTargetedResearchProvider(
+                        objectMapper
+                );
+
+        MerchantTargetedResearchProviderRegistry targetedResearchRegistry =
+                new MerchantTargetedResearchProviderRegistry(
+                        List.of(
+                                targetedResearchProvider
+                        )
+                );
+
+        MerchantTargetedResearchService targetedResearchService =
+                new MerchantTargetedResearchService(
+                        targetedResearchRegistry
+                );
+
+        MerchantTargetedResearchEvidenceFactory targetedResearchEvidenceFactory =
+                new MerchantTargetedResearchEvidenceFactory();
+
+
+        /*
+         * TRUST MAP ORCHESTRATION
+         */
+        TrustMapOrchestrationService trustMapService =
+                new TrustMapOrchestrationService(
+                        interpretationService,
+                        researchService,
+                        researchEvidenceFactory,
+                        evidenceCollectionService,
+                        synthesisService,
+                        targetedResearchService,
+                        targetedResearchEvidenceFactory
+                );
+
+
+        /*
+         * TEST CANDIDATE
+         */
+        CandidateOffer offer =
+                new CandidateOffer();
+
+        offer.setOfferId(
+                "offer-001"
+        );
+
+        offer.setMerchantId(
+                "heirloom-roses"
+        );
+
+        offer.setMerchantName(
+                "Heirloom Roses"
+        );
+
+        offer.setProductName(
+                "Desdemona Rose"
+        );
+
+        offer.setProductPriceCents(
+                6500
+        );
+
+
+        /*
+         * SAME TRUST CONTEXT AS OPENAI TEST
+         */
+        TrustContext context =
+                new TrustContext(
+                        "Find me a Desdemona rose for long-term garden planting",
+                        "GARDEN_PLANTS",
+                        "ROSE_BUSH",
+                        Map.of(
+                                "cultivar",
+                                "Desdemona",
+                                "propagationMethod",
+                                "OWN_ROOT"
+                        ),
+                        new BigDecimal(
+                                "65.00"
+                        ),
+                        DeliveryUrgency.NORMAL,
+                        MerchantFamiliarity.UNKNOWN,
+                        List.of(
+                                TrustDimension.PRODUCT_QUALITY,
+                                TrustDimension.PRODUCT_DURABILITY
+                        )
+                );
+
+
+        /*
+         * RUN CLAUDE TRUST MAP
+         */
+        MerchantTrustAssessment result =
+                trustMapService.assessMerchant(
+                        "claude",
+                        offer,
+                        context
+                );
+
+
+        /*
+         * OUTPUT
+         */
+        System.out.println();
+        System.out.println(
+                "CLAUDE MERCHANT TRUST ASSESSMENT"
+        );
+
+        System.out.println(
+                "Merchant: "
+                        + result.merchantName()
+        );
+
+        System.out.println(
+                "Observed evidence: "
+                        + result.observedEvidence().size()
+        );
+
+        System.out.println(
+                "Researched evidence: "
+                        + result.researchedEvidence().size()
+        );
+
+        System.out.println(
+                "Themes: "
+                        + result.synthesis()
+                        .themes()
+                        .size()
+        );
+
+        System.out.println(
+                "Remaining material questions: "
+                        + result.synthesis()
+                        .materialQuestions()
+                        .size()
+        );
+
+        System.out.println(
+                "Confidence: "
+                        + result.synthesis()
+                        .confidence()
+        );
+
+        result.synthesis()
+                .themes()
+                .forEach(theme -> {
+
+                    System.out.println();
+
+                    System.out.println(
+                            "Dimension: "
+                                    + theme.dimension()
+                    );
+
+                    System.out.println(
+                            "Signal: "
+                                    + theme.signal()
+                    );
+
+                    System.out.println(
+                            "Theme: "
+                                    + theme.theme()
+                    );
+                });
+
+
+        /*
+         * ASSERTIONS
+         */
+        assertEquals(
+                "heirloom-roses",
+                result.merchantId()
+        );
+
+        assertFalse(
+                result.observedEvidence()
+                        .isEmpty()
+        );
+
+        assertFalse(
+                result.synthesis()
+                        .themes()
+                        .isEmpty()
+        );
+    }
+
 
     @Test
     void shouldSynthesizeObservedMerchantEvidence() {

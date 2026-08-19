@@ -20,6 +20,13 @@ import java.util.List;
 @Service
 public class TrustMapOrchestrationService {
 
+    /*
+    Evidence observation       → FAST model
+    Initial synthesis          → STRONG model
+    Targeted research          → STRONG + web search model
+    Refinement                 → FAST model
+    Consumer summary           → FAST model
+     */
     private static final int MAX_RESEARCH_ROUNDS = 2;
 
     /*

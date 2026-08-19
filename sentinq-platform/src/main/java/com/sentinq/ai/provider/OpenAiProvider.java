@@ -38,6 +38,9 @@ public class OpenAiProvider
     private final OpenAIClient openAIClient;
     public static final String MODEL = ChatModel.GPT_5_2.toString();
 
+    private static final String EVIDENCE_OBSERVATION_MODEL =
+            "gpt-5.4-mini";
+
     public OpenAiProvider() {
         this.openAIClient =
                 OpenAIOkHttpClient.fromEnv();
@@ -212,7 +215,7 @@ public class OpenAiProvider
     ) {
         StructuredResponseCreateParams<MerchantEvidenceCollectionDecision> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model(EVIDENCE_OBSERVATION_MODEL)
                         .input(
                                 buildMerchantEvidenceCollectionPrompt(
                                         merchantId,
@@ -222,7 +225,10 @@ public class OpenAiProvider
                                 )
                         )
                         .addTool(
-                                WebSearchTool.builder().type(WebSearchTool.Type.WEB_SEARCH)
+                                WebSearchTool.builder()
+                                        .type(
+                                                WebSearchTool.Type.WEB_SEARCH
+                                        )
                                         .build()
                         )
                         .text(
