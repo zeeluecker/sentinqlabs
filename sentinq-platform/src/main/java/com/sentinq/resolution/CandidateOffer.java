@@ -6,6 +6,22 @@ public class CandidateOffer {
     private String merchantId;
     private String merchantName;
     private String productName;
+
+    /*
+     * Product information established during discovery
+     * and preserved for downstream goal-fit reasoning.
+     */
+    private String productDescription;
+
+    /*
+     * Discovery-stage explanation of why this offer
+     * appeared relevant to the consumer's goal.
+     *
+     * This is a discovery signal, not a final
+     * recommendation.
+     */
+    private String discoveryMatchReason;
+
     private Integer productPriceCents;
     private Integer fulfillmentScore;
     private Integer reviewScore;
@@ -65,5 +81,20 @@ public class CandidateOffer {
     public void setReviewScore(Integer reviewScore) {
         this.reviewScore = reviewScore;
     }
-// Generate getters and setters
+
+    public String getProductDescription() {
+        return productDescription;
+    }
+
+    public void setProductDescription(String productDescription) {
+        this.productDescription = productDescription;
+    }
+
+    public String getDiscoveryMatchReason() {
+        return discoveryMatchReason;
+    }
+
+    public void setDiscoveryMatchReason(String discoveryMatchReason) {
+        this.discoveryMatchReason = discoveryMatchReason;
+    }
 }

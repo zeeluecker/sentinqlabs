@@ -33,4 +33,9 @@ public class ProductSearchOffer {
             "Short explanation of why the product matches the goal."
     )
     public String matchReason;
+
+    @JsonPropertyDescription(
+            "Concise factual description of product attributes relevant to the shopping goal, based only on information found during discovery."
+    )
+    public String productDescription;
 }

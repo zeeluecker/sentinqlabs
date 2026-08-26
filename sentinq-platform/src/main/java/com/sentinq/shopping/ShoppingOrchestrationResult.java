@@ -7,7 +7,7 @@ import java.util.List;
 public record ShoppingOrchestrationResult(
         MandateEnvelope mandate,
         List<TrustAssessedCandidate> trustAssessedCandidates,
-        List<ResolvedCandidate> candidates,
-        ResolvedCandidate selectedCandidate
+        RecommendationDecision recommendation,
+        ResolvedCandidate resolvedCandidate
 ) {
 }

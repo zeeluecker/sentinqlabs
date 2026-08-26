@@ -15,7 +15,8 @@ public class LateBindingResolutionService {
      */
     public ResolutionResult resolve(
             CandidateOffer offer,
-            MandateEnvelope mandate
+            MandateEnvelope mandate,
+            ResolvedExecutionFacts facts
     ) {
         ResolutionResult result =
                 new ResolutionResult();

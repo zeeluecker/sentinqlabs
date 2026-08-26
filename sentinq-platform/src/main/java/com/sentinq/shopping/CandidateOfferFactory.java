@@ -38,6 +38,13 @@ public class CandidateOfferFactory {
                 searchOffer.productPriceCents
         );
 
+        candidate.setProductDescription(
+                searchOffer.productDescription
+        );
+
+        candidate.setDiscoveryMatchReason(
+                searchOffer.matchReason
+        );
         /*
          * These values are not yet backed by a real reputation service.
          * Keep them neutral rather than pretending search supplied them.

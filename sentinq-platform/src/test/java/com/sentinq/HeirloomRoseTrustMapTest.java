@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sentinq.ai.provider.ClaudeProvider;
 import com.sentinq.ai.provider.GeminiProvider;
 import com.sentinq.ai.provider.OpenAiProvider;
+import com.sentinq.goal.Goal;
 import com.sentinq.resolution.CandidateOffer;
+import com.sentinq.resolution.GoalFitCandidate;
+import com.sentinq.shopping.GoalFitReasoningProviderRegistry;
+import com.sentinq.shopping.GoalFitReasoningService;
 import com.sentinq.trust.*;
 import com.sentinq.trust.interpretation.EvidenceInterpretationProviderRegistry;
 import com.sentinq.trust.interpretation.EvidenceInterpretationService;
@@ -1774,6 +1778,295 @@ class HeirloomRoseTrustMapTest {
 
         assertFalse(
                 synthesis.supportingEvidenceIds().isEmpty()
+        );
+    }
+
+    @Test
+    void shouldRankScreenedCandidatesByGoalFit() {
+
+        /*
+         * GOAL FIT PROVIDER
+         *
+         * OpenAiProvider now implements the GoalFitReasoningProvider
+         * contract, so use the same provider instance directly.
+         */
+        OpenAiProvider openAiProvider =
+                new OpenAiProvider();
+
+        GoalFitReasoningProviderRegistry providerRegistry =
+                new GoalFitReasoningProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        GoalFitReasoningService goalFitReasoningService =
+                new GoalFitReasoningService(
+                        providerRegistry
+                );
+
+
+        /*
+         * CONSUMER GOAL
+         *
+         * Important: the original natural-language request is preserved.
+         * Goal Fit should reason over the actual consumer objective,
+         * not just the hard budget constraint.
+         */
+        Goal goal =
+                new Goal();
+
+        goal.setOriginalRequest(
+                """
+                Find me a white fragrant rose that smells amazing and
+                looks dreamy. I want it for my rose corner to provide
+                a break on the shades of pink roses in my rose corner.
+                I'm not willing to spend more than $80.
+                """
+        );
+
+        goal.setProductName(
+                "white fragrant rose"
+        );
+
+        goal.setMaximumTotalCents(
+                8000
+        );
+
+
+        /*
+         * CANDIDATE 1
+         *
+         * Strong qualitative fit:
+         * white + fragrance + soft/dreamy appearance.
+         */
+        CandidateOffer desdemona =
+                new CandidateOffer();
+
+        desdemona.setOfferId(
+                "offer-desdemona"
+        );
+
+        desdemona.setMerchantId(
+                "merchant-a"
+        );
+
+        desdemona.setMerchantName(
+                "Rose Merchant A"
+        );
+
+        desdemona.setProductName(
+                "Desdemona English Rose"
+        );
+
+        desdemona.setProductPriceCents(
+                6500
+        );
+
+        desdemona.setProductDescription(
+                """
+                White English shrub rose with blush-toned,
+                cupped blooms and strong Old Rose fragrance.
+                """
+        );
+
+        desdemona.setDiscoveryMatchReason(
+                """
+                White, strongly fragrant rose with a soft,
+                romantic flower form.
+                """
+        );
+
+
+        /*
+         * CANDIDATE 2
+         *
+         * Passes cheap screening and is white,
+         * but appears weaker against the actual objective.
+         */
+        CandidateOffer iceberg =
+                new CandidateOffer();
+
+        iceberg.setOfferId(
+                "offer-iceberg"
+        );
+
+        iceberg.setMerchantId(
+                "merchant-b"
+        );
+
+        iceberg.setMerchantName(
+                "Rose Merchant B"
+        );
+
+        iceberg.setProductName(
+                "Iceberg Floribunda Rose"
+        );
+
+        iceberg.setProductPriceCents(
+                4200
+        );
+
+        iceberg.setProductDescription(
+                """
+                White floribunda rose producing clusters
+                of white flowers with light fragrance.
+                """
+        );
+
+        iceberg.setDiscoveryMatchReason(
+                """
+                Matches the requested white color and is
+                within the consumer's budget.
+                """
+        );
+
+
+        /*
+         * CANDIDATE 3
+         *
+         * Also viable after cheap screening, but the supplied
+         * product information gives weaker evidence for fragrance.
+         */
+        CandidateOffer whiteLandscapeRose =
+                new CandidateOffer();
+
+        whiteLandscapeRose.setOfferId(
+                "offer-landscape"
+        );
+
+        whiteLandscapeRose.setMerchantId(
+                "merchant-c"
+        );
+
+        whiteLandscapeRose.setMerchantName(
+                "Rose Merchant C"
+        );
+
+        whiteLandscapeRose.setProductName(
+                "White Landscape Rose"
+        );
+
+        whiteLandscapeRose.setProductPriceCents(
+                3500
+        );
+
+        whiteLandscapeRose.setProductDescription(
+                """
+                Vigorous landscape rose with abundant
+                bright white flowers.
+                """
+        );
+
+        whiteLandscapeRose.setDiscoveryMatchReason(
+                """
+                Provides white flowers suitable for
+                contrasting with pink roses.
+                """
+        );
+
+
+        /*
+         * Deliberately do NOT put Desdemona first.
+         *
+         * This makes it visible whether Goal Fit actually
+         * changes candidate ordering.
+         */
+        List<CandidateOffer> screenedCandidates =
+                List.of(
+                        whiteLandscapeRose,
+                        iceberg,
+                        desdemona
+                );
+
+
+        /*
+         * GOAL FIT REASONING
+         */
+        List<GoalFitCandidate> rankedCandidates =
+                goalFitReasoningService.rank(
+                        "openai",
+                        goal,
+                        screenedCandidates
+                );
+
+
+        /*
+         * OUTPUT
+         */
+        System.out.println();
+        System.out.println("==============================");
+        System.out.println("GOAL FIT RANKING");
+        System.out.println("==============================");
+
+        rankedCandidates.forEach(
+                candidate -> {
+
+                    System.out.println();
+                    System.out.println(
+                            "Rank: "
+                                    + candidate.rank()
+                    );
+
+                    System.out.println(
+                            "Product: "
+                                    + candidate.offer()
+                                    .getProductName()
+                    );
+
+                    System.out.println(
+                            "Price: "
+                                    + candidate.offer()
+                                    .getProductPriceCents()
+                    );
+
+                    System.out.println(
+                            "Reasoning: "
+                                    + candidate.reasoning()
+                    );
+                }
+        );
+
+
+        /*
+         * STRUCTURAL ASSERTIONS
+         *
+         * We don't want to make the test brittle by asserting
+         * exact LLM wording.
+         */
+        assertNotNull(
+                rankedCandidates
+        );
+
+        assertEquals(
+                3,
+                rankedCandidates.size()
+        );
+
+        assertEquals(
+                1,
+                rankedCandidates.get(0).rank()
+        );
+
+        assertEquals(
+                2,
+                rankedCandidates.get(1).rank()
+        );
+
+        assertEquals(
+                3,
+                rankedCandidates.get(2).rank()
+        );
+
+        assertEquals(
+                "offer-desdemona",
+                rankedCandidates.get(0)
+                        .offer()
+                        .getOfferId()
+        );
+
+        assertFalse(
+                rankedCandidates.get(0)
+                        .reasoning()
+                        .isBlank()
         );
     }
 }

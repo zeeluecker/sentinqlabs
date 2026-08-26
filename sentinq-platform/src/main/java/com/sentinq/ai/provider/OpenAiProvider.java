@@ -8,6 +8,8 @@ import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.sentinq.ai.InterpretedShoppingGoal;
 import com.sentinq.resolution.CandidateOffer;
+import com.sentinq.shopping.GoalFitReasoningDecision;
+import com.sentinq.shopping.GoalFitReasoningProvider;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
@@ -33,7 +35,9 @@ public class OpenAiProvider
         ProductSearchProvider,
         EvidenceInterpretationProvider,
         ContextResearchProvider,
-        MerchantEvidenceCollectionProvider {
+        MerchantEvidenceCollectionProvider,
+        GoalFitReasoningProvider
+{
 
     private final OpenAIClient openAIClient;
     public static final String MODEL = ChatModel.GPT_5_2.toString();
@@ -257,6 +261,189 @@ public class OpenAiProvider
                                 "OpenAI returned no structured merchant evidence collection."
                         )
                 );
+    }
+
+    @Override
+    public GoalFitReasoningDecision rank(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        validateGoalFitInputs(
+                goal,
+                candidates
+        );
+
+        StructuredResponseCreateParams<GoalFitReasoningDecision> params =
+                ResponseCreateParams.builder()
+                        .model(MODEL)
+                        .input(
+                                buildGoalFitPrompt(
+                                        goal,
+                                        candidates
+                                )
+                        )
+                        .text(
+                                GoalFitReasoningDecision.class
+                        )
+                        .build();
+
+        StructuredResponse<GoalFitReasoningDecision> response =
+                openAIClient.responses()
+                        .create(params);
+
+        return response.output()
+                .stream()
+                .flatMap(outputItem ->
+                        outputItem.message().stream()
+                )
+                .flatMap(message ->
+                        message.content().stream()
+                )
+                .flatMap(content ->
+                        content.outputText().stream()
+                )
+                .findFirst()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "OpenAI returned no structured goal-fit reasoning."
+                        )
+                );
+    }
+
+    private String buildGoalFitPrompt(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        return """
+            You are performing lightweight goal-fit reasoning
+            for Sentinq shopping orchestration.
+
+            Your task is to rank the supplied candidate offers
+            according to how well each candidate appears to
+            accomplish the consumer's shopping goal.
+
+            Consumer goal:
+            - Original request: %s
+            - Product: %s
+
+            Candidate offers:
+            %s
+
+            Rules:
+
+            1. Evaluate only the candidates supplied to you.
+
+            2. Do not search for additional products or evidence.
+
+            3. Preserve the consumer's original objective and context.
+               The original request is the primary source for understanding
+               what the consumer is trying to accomplish.
+
+            4. Do not reduce the consumer's goal to only hard constraints.
+               Consider the qualitative objective, intended use, appearance,
+               experience, compatibility, and other strong preferences
+               expressed in the original request.
+
+            5. Treat the supplied product description as discovered product
+               information. Treat the discovery match reason as an earlier
+               relevance signal, not as a conclusion that must be accepted.
+
+            6. Hard screening has already removed candidates that can be
+               cheaply proven to be non-starters. Do not repeat hard screening.
+
+            7. Do not perform merchant trust assessment.
+               Trust Maps runs later for shortlisted contenders.
+
+            8. Do not resolve shipping, tax, inventory, or final delivery
+               commitments. Those are late-binding execution facts
+               resolved later.
+
+            9. Do not determine whether the agent is authorized to execute
+               the purchase.
+
+            10. Rank every supplied candidate exactly once.
+
+            11. Rank 1 means the strongest apparent fit for this
+                consumer goal.
+
+            12. Ranks must be unique and sequential:
+                1, 2, 3, and so on.
+
+            13. reasoning should briefly explain why the candidate occupies
+                that position relative to the consumer's stated objective.
+
+            14. Do not invent product attributes that are not present
+                in the supplied candidate information.
+
+            Return only the structured GoalFitReasoningDecision.
+            """
+                .formatted(
+                        goal.getOriginalRequest(),
+                        goal.getProductName(),
+                        formatGoalFitCandidates(candidates)
+                );
+    }
+
+    private String formatGoalFitCandidates(
+            List<CandidateOffer> candidates
+    ) {
+        StringBuilder builder =
+                new StringBuilder();
+
+        for (int i = 0; i < candidates.size(); i++) {
+
+            CandidateOffer candidate =
+                    candidates.get(i);
+
+            builder.append("Candidate ")
+                    .append(i + 1)
+                    .append(":\n");
+
+            builder.append("- Offer ID: ")
+                    .append(candidate.getOfferId())
+                    .append("\n");
+
+            builder.append("- Product: ")
+                    .append(candidate.getProductName())
+                    .append("\n");
+
+            builder.append("- Merchant: ")
+                    .append(candidate.getMerchantName())
+                    .append("\n");
+
+            builder.append("- Price cents: ")
+                    .append(candidate.getProductPriceCents())
+                    .append("\n");
+
+            builder.append("- Product description: ")
+                    .append(candidate.getProductDescription())
+                    .append("\n");
+
+            builder.append("- Discovery match reason: ")
+                    .append(candidate.getDiscoveryMatchReason())
+                    .append("\n\n");
+        }
+
+        return builder.toString();
+    }
+
+
+    private void validateGoalFitInputs(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        if (goal == null) {
+            throw new IllegalArgumentException(
+                    "Goal is required for goal-fit reasoning."
+            );
+        }
+
+        if (candidates == null ||
+                candidates.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "At least one candidate is required for goal-fit reasoning."
+            );
+        }
     }
 
     private String buildMerchantEvidenceCollectionPrompt(
@@ -1022,7 +1209,14 @@ public class OpenAiProvider
             - productPriceCents must contain the listed item price only.
             - Shipping, tax, and delivery feasibility will be resolved
               separately by Sentinq.
-            - Include a concise explanation of why each product matches.
+            -Include a concise factual product description containing attributes
+                   relevant to the consumer's goal when those attributes are supported
+                   by the discovered product information.
+            
+            - Do not invent product attributes that are not supported by the
+                   discovered source.
+            - Include a concise explanation of why each product appears to match
+                   the consumer's goal.
 
             """.formatted(
                 goal.getProductName(),

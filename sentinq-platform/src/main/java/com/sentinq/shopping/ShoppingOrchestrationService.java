@@ -7,9 +7,7 @@ import com.sentinq.identity.PrincipalService;
 import com.sentinq.mandate.MandateBuilder;
 import com.sentinq.mandate.MandateEnvelope;
 import com.sentinq.preference.*;
-import com.sentinq.resolution.CandidateOffer;
-import com.sentinq.resolution.LateBindingResolutionService;
-import com.sentinq.resolution.ResolutionResult;
+import com.sentinq.resolution.*;
 import com.sentinq.trust.*;
 import org.springframework.stereotype.Service;
 import com.sentinq.audit.AuditEventType;
@@ -42,6 +40,10 @@ public class ShoppingOrchestrationService {
     private final CandidateOfferFactory candidateOfferFactory;
     private final AuditService auditService;
     private final TrustMapOrchestrationService trustMapOrchestrationService;
+    private final GoalFitReasoningService goalFitReasoningService;
+    private final RecommendationReasoningService
+            recommendationReasoningService;
+    private ExecutionFactsResolver executionFactsResolver;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -56,7 +58,11 @@ public class ShoppingOrchestrationService {
             ProductSearchService productSearchService,
             CandidateOfferFactory candidateOfferFactory,
             AuditService auditService,
-            TrustMapOrchestrationService trustMapOrchestrationService
+            TrustMapOrchestrationService trustMapOrchestrationService,
+            GoalFitReasoningService goalFitReasoningService,
+            RecommendationReasoningService
+                    recommendationReasoningService,
+            ExecutionFactsResolver executionFactsResolver
 
     ) {
         this.mandateBuilder = mandateBuilder;
@@ -71,6 +77,9 @@ public class ShoppingOrchestrationService {
         this.candidateOfferFactory = candidateOfferFactory;
         this.auditService = auditService;
         this.trustMapOrchestrationService = trustMapOrchestrationService;
+        this.goalFitReasoningService = goalFitReasoningService;
+        this.recommendationReasoningService = recommendationReasoningService;
+        this.executionFactsResolver = executionFactsResolver;
     }
 
     public ShoppingOrchestrationResult orchestrate(
@@ -235,14 +244,41 @@ public class ShoppingOrchestrationService {
                         .map(candidateOfferFactory::create)
                         .toList();
 
+        candidates.forEach(candidate -> {
+            System.out.println();
+            System.out.println("FACTORY OUTPUT");
+            System.out.println(
+                    "Offer ID: [" + candidate.getOfferId() + "]"
+            );
+            System.out.println(
+                    "Merchant ID: [" + candidate.getMerchantId() + "]"
+            );
+            System.out.println(
+                    "Merchant: [" + candidate.getMerchantName() + "]"
+            );
+            System.out.println(
+                    "Product: [" + candidate.getProductName() + "]"
+            );
+        });
+
         /*
-         * Resolve first.
-         * Cheap transaction checks happen before expensive Trust Maps.
+         * Hard screening.
+         *
+         * Cheap, deterministic exclusions happen before
+         * expensive goal-fit reasoning and Trust Maps.
+         *
+         * Surviving this stage does NOT mean that a candidate
+         * satisfies the mandate. It only means that we cannot
+         * cheaply prove that the candidate should be excluded.
+         *
+         * Late-binding execution facts such as shipping, tax,
+         * final delivery commitment, and current inventory
+         * are resolved later for the selected candidate.
          */
-        List<ResolvedCandidate> resolvedCandidates =
+        List<CandidateOffer> screenedCandidates =
                 candidates.stream()
-                        .map(candidate ->
-                                resolveCandidate(
+                        .filter(candidate ->
+                                !shouldExcludeDuringHardScreening(
                                         candidate,
                                         mandate
                                 )
@@ -251,36 +287,72 @@ public class ShoppingOrchestrationService {
 
         auditService.recordEvent(
                 trace.getTraceId(),
-                AuditEventType.CANDIDATES_RESOLVED,
-                "LateBindingResolutionService",
-                "Candidate offers evaluated against the mandate.",
-                resolvedCandidates
+                AuditEventType.CANDIDATES_SCREENED,
+                "ShoppingOrchestrationService",
+                "Cheap deterministic exclusions applied to discovered candidates.",
+                screenedCandidates
         );
-
-        /*
-         * Keep only candidates that survived the current
-         * resolution / mandate checks.
-         */
-        List<ResolvedCandidate> viableCandidates =
-                resolvedCandidates.stream()
-                        .filter(candidate ->
-                                isPreliminarilyViable(
-                                        candidate,
-                                        mandate
-                                )
-                        )
-                        .toList();
         /*
          * MVP reasoning budget.
          *
          * For now we keep at most 3 preliminarily viable contenders.
          * Goal-fit ranking will replace first-3 selection later.
          */
-        List<ResolvedCandidate> shortlistedCandidates =
-                viableCandidates.stream()
+
+        List<GoalFitCandidate> goalFitCandidates;
+        goalFitCandidates = goalFitReasoningService.rank(
+                agent.getProvider(),
+                goal,
+                screenedCandidates
+        );
+
+        List<GoalFitCandidate> shortlistedCandidates =
+                goalFitCandidates.stream()
+                        .sorted(
+                                Comparator.comparingInt(
+                                        GoalFitCandidate::rank
+                                )
+                        )
                         .limit(3)
                         .toList();
 
+        shortlistedCandidates.forEach(
+                goalFitCandidate -> {
+
+                    CandidateOffer offer =
+                            goalFitCandidate.offer();
+
+                    System.out.println();
+                    System.out.println("TRUST MAP INPUT");
+                    System.out.println(
+                            "Rank: "
+                                    + goalFitCandidate.rank()
+                    );
+                    System.out.println(
+                            "Offer ID: "
+                                    + offer.getOfferId()
+                    );
+                    System.out.println(
+                            "Merchant ID: "
+                                    + offer.getMerchantId()
+                    );
+                    System.out.println(
+                            "Merchant: "
+                                    + offer.getMerchantName()
+                    );
+                    System.out.println(
+                            "Product: "
+                                    + offer.getProductName()
+                    );
+                }
+        );
+        auditService.recordEvent(
+                trace.getTraceId(),
+                AuditEventType.GOAL_FIT_EVALUATED,
+                "GoalFitReasoningService",
+                "Screened candidates ranked against the consumer's goal.",
+                goalFitCandidates
+        );
         /*
          * Expensive Trust Maps runs only on shortlisted contenders.
          *
@@ -314,12 +386,80 @@ public class ShoppingOrchestrationService {
             try {
                 List<CompletableFuture<TrustAssessedCandidate>> trustMapFutures =
                         shortlistedCandidates.stream()
-                                .map(resolved ->
+                                .map(goalFitCandidate ->
                                         CompletableFuture.supplyAsync(
                                                 () ->
                                                         assessCandidateTrust(
                                                                 agent.getProvider(),
-                                                                resolved.offer(),
+                                                                goalFitCandidate,
+                                                                goal,
+                                                                preferences
+                                                        ),
+                                                trustMapExecutor
+                                        )
+                                )
+                                .toList();
+
+                trustAssessedCandidates =
+                        trustMapFutures.stream()
+                                .map(CompletableFuture::join)
+                                .toList();
+
+            } finally {
+                trustMapExecutor.shutdown();
+            }
+        }
+
+        /*
+         * Recommendation reasoning happens only after
+         * Trust Maps have completed for all shortlisted
+         * contenders.
+         */
+        RecommendationDecision recommendation = null;
+
+        if (!trustAssessedCandidates.isEmpty()) {
+            recommendation =
+                    recommendationReasoningService.recommend(
+                            agent.getProvider(),
+                            goal,
+                            trustAssessedCandidates
+                    );
+        }
+
+        if (recommendation != null) {
+            auditService.recordEvent(
+                    trace.getTraceId(),
+                    AuditEventType.RECOMMENDATION_CREATED,
+                    "RecommendationReasoningService",
+                    "Recommendation selected from goal-fit and trust-assessed contenders.",
+                    recommendation
+            );
+        }
+
+        if (shortlistedCandidates.isEmpty()) {
+
+            trustAssessedCandidates =
+                    List.of();
+
+        } else {
+
+            ExecutorService trustMapExecutor =
+                    Executors.newFixedThreadPool(
+                            Math.min(
+                                    3,
+                                    shortlistedCandidates.size()
+                            )
+                    );
+
+            try {
+                List<CompletableFuture<TrustAssessedCandidate>> trustMapFutures =
+                        shortlistedCandidates.stream()
+                                .map(goalFitCandidate ->
+                                        CompletableFuture.supplyAsync(
+                                                () ->
+                                                        assessCandidateTrust(
+                                                                agent.getProvider(),
+                                                                goalFitCandidate,
                                                                 goal,
                                                                 preferences
                                                         ),
@@ -351,29 +491,63 @@ public class ShoppingOrchestrationService {
          * + transaction viability
          * → selected candidate
          */
-        Optional<ResolvedCandidate> selectedCandidate =
-                shortlistedCandidates.stream()
-                        .min(
-                                Comparator.comparing(
-                                        this::resolvedTotal
-                                )
-                        );
 
+        ResolvedCandidate resolvedCandidate = null;
+
+        if (recommendation != null &&
+                recommendation.selectedCandidate() != null) {
+
+            CandidateOffer selectedOffer =
+                    recommendation.selectedCandidate();
+
+            ResolvedExecutionFacts executionFacts =
+                    executionFactsResolver.resolve(
+                            selectedOffer
+                    );
+
+            ResolutionResult resolution =
+                    resolutionService.resolve(
+                            selectedOffer,
+                            mandate,
+                            executionFacts
+                    );
+
+            resolvedCandidate =
+                    new ResolvedCandidate(
+                            selectedOffer,
+                            resolution
+                    );
+        }
         ShoppingOrchestrationResult result =
                 new ShoppingOrchestrationResult(
                         mandate,
                         trustAssessedCandidates,
-                        resolvedCandidates,
-                        selectedCandidate.orElse(null)
+                        recommendation,
+                        resolvedCandidate
                 );
+        String finalDecisionMessage;
+
+        if (resolvedCandidate == null) {
+
+            finalDecisionMessage =
+                    "No candidate reached late-binding resolution.";
+
+        } else if (resolvedCandidate.resolution().isExecutable()) {
+
+            finalDecisionMessage =
+                    "Recommended candidate passed late-binding resolution.";
+
+        } else {
+
+            finalDecisionMessage =
+                    "Recommended candidate failed late-binding resolution.";
+        }
 
         auditService.recordEvent(
                 trace.getTraceId(),
                 AuditEventType.FINAL_DECISION,
                 "ShoppingOrchestrationService",
-                selectedCandidate.isPresent()
-                        ? "Shortlisted candidate selected."
-                        : "No preliminarily viable candidate was found.",
+                finalDecisionMessage,
                 result
         );
 
@@ -383,6 +557,43 @@ public class ShoppingOrchestrationService {
 
         return result;
     }
+
+    private boolean shouldExcludeDuringHardScreening(
+            CandidateOffer candidate,
+            MandateEnvelope mandate
+    ) {
+
+        /*
+         * Hard screening is intentionally asymmetric.
+         *
+         * It can prove that a candidate should be excluded,
+         * but it does not prove that a surviving candidate
+         * is executable.
+         */
+
+        if (mandate.getProhibitedMerchants() != null &&
+                mandate.getProhibitedMerchants()
+                        .contains(candidate.getMerchantId())) {
+            return true;
+        }
+
+        Integer maximumTotalCents =
+                mandate.getMaximumTotalCents();
+
+        /*
+         * If product price alone already exceeds the
+         * consumer's maximum total budget, later resolution
+         * of shipping and tax cannot make it compliant.
+         */
+        if (maximumTotalCents != null &&
+                candidate.getProductPriceCents() >
+                        maximumTotalCents) {
+            return true;
+        }
+
+        return false;
+    }
+
 
     private boolean isPreliminarilyViable(
             ResolvedCandidate candidate,
@@ -405,10 +616,14 @@ public class ShoppingOrchestrationService {
 
     private TrustAssessedCandidate assessCandidateTrust(
             String provider,
-            CandidateOffer candidate,
+            GoalFitCandidate goalFitCandidate,
             Goal goal,
             ConsumerPreferences preferences
     ) {
+
+        CandidateOffer candidate =
+                goalFitCandidate.offer();
+
         TrustContext trustContext =
                 buildTrustContext(
                         goal,
@@ -424,10 +639,11 @@ public class ShoppingOrchestrationService {
                 );
 
         return new TrustAssessedCandidate(
-                candidate,
+                goalFitCandidate,
                 trustAssessment
         );
     }
+
 
     private TrustContext buildTrustContext(
             Goal goal,
@@ -456,12 +672,15 @@ public class ShoppingOrchestrationService {
 
     private ResolvedCandidate resolveCandidate(
             CandidateOffer candidate,
-            MandateEnvelope mandate
+            MandateEnvelope mandate,
+            ResolvedExecutionFacts executionFacts
+
     ) {
         ResolutionResult resolution =
                 resolutionService.resolve(
                         candidate,
-                        mandate
+                        mandate,
+                        executionFacts
                 );
 
         return new ResolvedCandidate(
