@@ -436,60 +436,19 @@ public class ShoppingOrchestrationService {
             );
         }
 
-        if (shortlistedCandidates.isEmpty()) {
-
-            trustAssessedCandidates =
-                    List.of();
-
-        } else {
-
-            ExecutorService trustMapExecutor =
-                    Executors.newFixedThreadPool(
-                            Math.min(
-                                    3,
-                                    shortlistedCandidates.size()
-                            )
-                    );
-
-            try {
-                List<CompletableFuture<TrustAssessedCandidate>> trustMapFutures =
-                        shortlistedCandidates.stream()
-                                .map(goalFitCandidate ->
-                                        CompletableFuture.supplyAsync(
-                                                () ->
-                                                        assessCandidateTrust(
-                                                                agent.getProvider(),
-                                                                goalFitCandidate,
-                                                                goal,
-                                                                preferences
-                                                        ),
-                                                trustMapExecutor
-                                        )
-                                )
-                                .toList();
-
-                trustAssessedCandidates =
-                        trustMapFutures.stream()
-                                .map(CompletableFuture::join)
-                                .toList();
-
-            } finally {
-                trustMapExecutor.shutdown();
-            }
-        }
-
         /*
-         * Temporary MVP selection.
+         * Late-binding resolution runs only for the
+         * recommended candidate.
          *
-         * For now choose the cheapest preliminarily viable
-         * shortlisted candidate.
-         *
-         * This will later become Recommendation Reasoning:
+         * Recommendation Reasoning has already combined:
          *
          * goal fit
          * + Trust Map
-         * + transaction viability
-         * → selected candidate
+         * → recommended candidate
+         *
+         * We now resolve current execution facts and
+         * validate whether that recommendation can
+         * actually proceed under the mandate.
          */
 
         ResolvedCandidate resolvedCandidate = null;
@@ -620,7 +579,6 @@ public class ShoppingOrchestrationService {
             Goal goal,
             ConsumerPreferences preferences
     ) {
-
         CandidateOffer candidate =
                 goalFitCandidate.offer();
 

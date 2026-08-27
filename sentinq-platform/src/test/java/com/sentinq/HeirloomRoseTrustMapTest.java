@@ -31,6 +31,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import com.sentinq.goal.Goal;
+import com.sentinq.resolution.GoalFitCandidate;
+import com.sentinq.shopping.RecommendationDecision;
+import com.sentinq.shopping.RecommendationReasoningProviderRegistry;
+import com.sentinq.shopping.RecommendationReasoningService;
+import com.sentinq.shopping.TrustAssessedCandidate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -2067,6 +2073,286 @@ class HeirloomRoseTrustMapTest {
                 rankedCandidates.get(0)
                         .reasoning()
                         .isBlank()
+        );
+    }
+
+    @Test
+    void recommendationReasoningShouldBalanceGoalFitAndMerchantTrust() {
+
+        OpenAiProvider openAiProvider =
+                new OpenAiProvider();
+
+        RecommendationReasoningProviderRegistry providerRegistry =
+                new RecommendationReasoningProviderRegistry(
+                        List.of(openAiProvider)
+                );
+
+        RecommendationReasoningService service =
+                new RecommendationReasoningService(
+                        providerRegistry
+                );
+
+
+        /*
+         * CONSUMER GOAL
+         */
+        Goal goal =
+                new Goal();
+
+        goal.setOriginalRequest(
+                """
+                Find me a white fragrant rose that smells amazing and
+                looks dreamy. I want it for my rose corner to provide
+                a break from the shades of pink roses in my rose corner.
+                I'm not willing to spend more than $80.
+                """
+        );
+
+        goal.setProductName(
+                "white fragrant rose"
+        );
+
+        goal.setMaximumTotalCents(
+                8000
+        );
+
+
+        /*
+         * CANDIDATE A
+         *
+         * Strongest product fit, but meaningful merchant concern.
+         */
+        CandidateOffer candidateA =
+                new CandidateOffer();
+
+        candidateA.setOfferId("offer-a");
+        candidateA.setMerchantId("merchant-a");
+        candidateA.setMerchantName("Merchant A");
+        candidateA.setProductName("Desdemona English Rose");
+        candidateA.setProductPriceCents(6500);
+
+        GoalFitCandidate goalFitA =
+                new GoalFitCandidate(
+                        candidateA,
+                        1,
+                        """
+                        Excellent fit. White romantic blooms with strong
+                        fragrance closely match the consumer's dreamy,
+                        fragrant rose objective.
+                        """
+                );
+
+        MerchantEvidenceSynthesis synthesisA =
+                new MerchantEvidenceSynthesis(
+                        "merchant-a",
+                        "Merchant A",
+                        List.of(
+                                new TrustEvidenceTheme(
+                                        TrustDimension.FULFILLMENT_RELIABILITY,
+                                        """
+                                        Repeated evidence indicates inconsistent
+                                        fulfillment and poor arrival condition.
+                                        """,
+                                        TrustSignal.CONCERNING,
+                                        List.of("evidence-a1")
+                                )
+                        ),
+                        List.of(),
+                        List.of("evidence-a1"),
+                        0.90
+                );
+
+        MerchantTrustAssessment trustA =
+                new MerchantTrustAssessment(
+                        "merchant-a",
+                        "Merchant A",
+                        List.of(),
+                        List.of(),
+                        synthesisA
+                );
+
+
+        /*
+         * CANDIDATE B
+         *
+         * Slightly weaker goal fit, favorable merchant evidence.
+         */
+        CandidateOffer candidateB =
+                new CandidateOffer();
+
+        candidateB.setOfferId("offer-b");
+        candidateB.setMerchantId("merchant-b");
+        candidateB.setMerchantName("Merchant B");
+        candidateB.setProductName("Sugar Moon Rose");
+        candidateB.setProductPriceCents(5900);
+
+        GoalFitCandidate goalFitB =
+                new GoalFitCandidate(
+                        candidateB,
+                        2,
+                        """
+                        Very strong fit. White blooms and exceptional fragrance
+                        satisfy the major objective, although the flower form
+                        is somewhat less aligned with the dreamy aesthetic
+                        than Desdemona.
+                        """
+                );
+
+        MerchantEvidenceSynthesis synthesisB =
+                new MerchantEvidenceSynthesis(
+                        "merchant-b",
+                        "Merchant B",
+                        List.of(
+                                new TrustEvidenceTheme(
+                                        TrustDimension.FULFILLMENT_RELIABILITY,
+                                        """
+                                        Evidence indicates generally reliable
+                                        fulfillment and healthy plants on arrival.
+                                        """,
+                                        TrustSignal.FAVORABLE,
+                                        List.of("evidence-b1")
+                                )
+                        ),
+                        List.of(),
+                        List.of("evidence-b1"),
+                        0.90
+                );
+
+        MerchantTrustAssessment trustB =
+                new MerchantTrustAssessment(
+                        "merchant-b",
+                        "Merchant B",
+                        List.of(),
+                        List.of(),
+                        synthesisB
+                );
+
+
+        /*
+         * CANDIDATE C
+         *
+         * Clearly weaker product fit despite favorable trust.
+         */
+        CandidateOffer candidateC =
+                new CandidateOffer();
+
+        candidateC.setOfferId("offer-c");
+        candidateC.setMerchantId("merchant-c");
+        candidateC.setMerchantName("Merchant C");
+        candidateC.setProductName("Iceberg Rose");
+        candidateC.setProductPriceCents(4200);
+
+        GoalFitCandidate goalFitC =
+                new GoalFitCandidate(
+                        candidateC,
+                        3,
+                        """
+                        Good white color fit, but fragrance is much weaker
+                        than the consumer's stated priority for an amazing
+                        scent.
+                        """
+                );
+
+        MerchantEvidenceSynthesis synthesisC =
+                new MerchantEvidenceSynthesis(
+                        "merchant-c",
+                        "Merchant C",
+                        List.of(
+                                new TrustEvidenceTheme(
+                                        TrustDimension.FULFILLMENT_RELIABILITY,
+                                        """
+                                        Evidence indicates reliable fulfillment.
+                                        """,
+                                        TrustSignal.FAVORABLE,
+                                        List.of("evidence-c1")
+                                )
+                        ),
+                        List.of(),
+                        List.of("evidence-c1"),
+                        0.90
+                );
+
+        MerchantTrustAssessment trustC =
+                new MerchantTrustAssessment(
+                        "merchant-c",
+                        "Merchant C",
+                        List.of(),
+                        List.of(),
+                        synthesisC
+                );
+
+
+        /*
+         * COMBINE GOAL FIT + TRUST
+         */
+        List<TrustAssessedCandidate> candidates =
+                List.of(
+                        new TrustAssessedCandidate(
+                                goalFitA,
+                                trustA
+                        ),
+                        new TrustAssessedCandidate(
+                                goalFitB,
+                                trustB
+                        ),
+                        new TrustAssessedCandidate(
+                                goalFitC,
+                                trustC
+                        )
+                );
+
+
+        /*
+         * RECOMMEND
+         */
+        RecommendationDecision result =
+                service.recommend(
+                        "openai",
+                        goal,
+                        candidates
+                );
+
+
+        /*
+         * INSPECT RESULT
+         */
+        System.out.println();
+        System.out.println("==============================");
+        System.out.println("RECOMMENDATION REASONING");
+        System.out.println("==============================");
+
+        System.out.println(
+                "Selected offer: "
+                        + result.selectedCandidate().getOfferId()
+        );
+
+        System.out.println(
+                "Selected product: "
+                        + result.selectedCandidate().getProductName()
+        );
+
+        System.out.println(
+                "Selected merchant: "
+                        + result.selectedCandidate().getMerchantName()
+        );
+
+        System.out.println();
+
+        System.out.println(
+                "Reasoning: "
+                        + result.reasoning()
+        );
+
+
+        /*
+         * STRUCTURAL ASSERTIONS
+         */
+        assertNotNull(result);
+        assertNotNull(result.selectedCandidate());
+        assertNotNull(result.reasoning());
+
+        assertFalse(
+                result.reasoning().isBlank()
         );
     }
 }

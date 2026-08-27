@@ -777,16 +777,33 @@ function setOrchestrationLoadingState(isLoading) {
  * Today, this simulates persistence. Later, mandates and audit events should come
  * from backend repositories and dedicated APIs.
  */
-function recordOrchestrationResult(result, originalGoal) {
+function recordOrchestrationResult(
+  result,
+  originalGoal
+) {
   const mandateRecord = {
     ...result.mandate,
     originalGoal,
     createdAt: new Date()
   };
 
-  appState.mandates.unshift(mandateRecord);
-  appState.blockedActionCount += countBlockedCandidates(result.candidates);
-  appState.auditEvents.unshift(...buildAuditEvents(result, originalGoal));
+  appState.mandates.unshift(
+    mandateRecord
+  );
+
+  if (
+    result.resolvedCandidate &&
+    !result.resolvedCandidate.resolution?.executable
+  ) {
+    appState.blockedActionCount += 1;
+  }
+
+  appState.auditEvents.unshift(
+    ...buildAuditEvents(
+      result,
+      originalGoal
+    )
+  );
 
   refreshCommandCenter();
 }
@@ -2332,39 +2349,178 @@ refreshAuditButton.addEventListener(
 function renderShoppingResult(result) {
   renderMandate(result.mandate);
 
-  renderSelectedCandidate(
-    result.selectedCandidate
+  renderRecommendation(
+    result.recommendation
   );
 
-  renderCandidateCarts(
-    result.candidates ?? [],
+  renderTrustAssessedCandidates(
     result.trustAssessedCandidates ?? []
   );
+
+  renderResolvedCandidate(
+    result.resolvedCandidate
+  );
 }
+
+function renderRecommendation(recommendation) {
+  if (!recommendation?.selectedCandidate) {
+    elements.selectedResult.innerHTML =
+      createBlockedDecisionHtml();
+    return;
+  }
+
+  const offer =
+    recommendation.selectedCandidate;
+
+  elements.selectedResult.innerHTML = `
+    <article class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">SENTINQ RECOMMENDATION</p>
+          <h3>${escapeHtml(offer.productName)}</h3>
+        </div>
+
+        <span class="badge badge-success">
+          Recommended
+        </span>
+      </div>
+
+      <p class="section-copy">
+        ${escapeHtml(offer.merchantName)}
+        ·
+        ${formatMoney(offer.productPriceCents)}
+      </p>
+
+      <p class="section-copy">
+        ${escapeHtml(recommendation.reasoning)}
+      </p>
+    </article>
+  `;
+}
+
+function renderTrustAssessedCandidates(
+  trustAssessedCandidates
+) {
+  elements.candidateResults.innerHTML = `
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">TRUST MAPS</p>
+        <h2>Shortlisted contenders</h2>
+      </div>
+    </div>
+
+    <div class="candidate-grid">
+      ${
+        trustAssessedCandidates
+          .map(item =>
+            createTrustAssessedCandidateHtml(
+              item.candidate,
+              item.trustAssessment
+            )
+          )
+          .join("")
+      }
+    </div>
+  `;
+}
+
+function createTrustAssessedCandidateHtml(
+  assessedCandidate
+) {
+  const goalFitCandidate =
+    assessedCandidate.goalFitCandidate;
+
+  const trustAssessment =
+    assessedCandidate.trustAssessment;
+
+  const offer =
+    goalFitCandidate.offer;
+
+  return `
+    <article class="candidate-card">
+
+      <div class="candidate-header">
+        <div>
+          <p class="eyebrow">
+            GOAL-FIT RANK #${goalFitCandidate.rank}
+          </p>
+
+          <h3>
+            ${escapeHtml(
+              offer.merchantName
+            )}
+          </h3>
+
+          <p>
+            ${escapeHtml(
+              offer.productName
+            )}
+          </p>
+        </div>
+
+        <span class="badge">
+          #${goalFitCandidate.rank}
+        </span>
+      </div>
+
+      <div class="price-grid">
+        <span>Product price</span>
+
+        <strong>
+          ${formatMoney(
+            offer.productPriceCents
+          )}
+        </strong>
+      </div>
+
+      <div class="goal-fit-summary">
+        <p class="eyebrow">
+          GOAL FIT
+        </p>
+
+        <p class="section-copy">
+          ${escapeHtml(
+            goalFitCandidate.reasoning
+          )}
+        </p>
+      </div>
+
+      ${createTrustMapSummaryHtml(
+        trustAssessment
+      )}
+
+    </article>
+  `;
+}
+
 
 function createBlockedDecisionHtml() {
   return `
     <article class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">EXECUTION DECISION</p>
-          <h3>No shortlisted candidate selected</h3>
+          <p class="eyebrow">CURRENT RESOLUTION</p>
+          <h3>Recommended transaction cannot proceed</h3>
         </div>
-        <span class="badge badge-danger">Blocked</span>
+
+        <span class="badge badge-danger">
+          Blocked
+        </span>
       </div>
 
       <p class="section-copy">
-        No preliminarily viable candidate was selected for this run.
+        The recommended candidate did not pass
+        the current execution checks.
       </p>
     </article>
   `;
 }
 
 function createSelectedCandidateHtml(
-  selectedCandidate
+  resolvedCandidate
 ) {
   const { offer, resolution } =
-    selectedCandidate;
+    resolvedCandidate;
 
   return `
     <article class="panel">
@@ -2454,13 +2610,19 @@ function createSummaryItemHtml(label, value) {
   `;
 }
 
-function renderSelectedCandidate(selectedCandidate) {
-  if (!selectedCandidate) {
-    elements.selectedResult.innerHTML = createBlockedDecisionHtml();
+function renderResolvedCandidate(
+  resolvedCandidate
+) {
+  if (!resolvedCandidate) {
+    elements.selectedResult.innerHTML =
+      createBlockedDecisionHtml();
     return;
   }
 
-  elements.selectedResult.innerHTML = createSelectedCandidateHtml(selectedCandidate);
+  elements.selectedResult.innerHTML =
+    createSelectedCandidateHtml(
+      resolvedCandidate
+    );
 }
 
 function createBlockedDecisionHtml() {
@@ -2712,40 +2874,28 @@ function formatConfidence(value) {
 
     return `${Math.round(value * 100)}%`;
 }
-function renderCandidateCarts(
-  candidates,
+function renderTrustAssessedCandidates(
   trustAssessedCandidates
 ) {
-  const trustByOfferId =
-    new Map(
-      trustAssessedCandidates.map(item => [
-        item.candidate?.offerId,
-        item.trustAssessment
-      ])
-    );
-
   elements.candidateResults.innerHTML = `
     <div class="section-heading">
       <div>
-        <p class="eyebrow">CANDIDATE ASSESSMENT</p>
-        <h2>Candidate carts</h2>
+        <p class="eyebrow">
+          CANDIDATES CONSIDERED
+        </p>
+
+        <h2>
+          Goal fit + Trust Maps
+        </h2>
       </div>
     </div>
 
     <div class="candidate-grid">
       ${
-        candidates
-          .map(candidate => {
-            const trustAssessment =
-              trustByOfferId.get(
-                candidate.offer?.offerId
-              );
-
-            return createCandidateCardHtml(
-              candidate,
-              trustAssessment
-            );
-          })
+        trustAssessedCandidates
+          .map(
+            createTrustAssessedCandidateHtml
+          )
           .join("")
       }
     </div>

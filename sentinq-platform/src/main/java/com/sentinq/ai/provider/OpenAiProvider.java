@@ -8,8 +8,7 @@ import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.sentinq.ai.InterpretedShoppingGoal;
 import com.sentinq.resolution.CandidateOffer;
-import com.sentinq.shopping.GoalFitReasoningDecision;
-import com.sentinq.shopping.GoalFitReasoningProvider;
+import com.sentinq.shopping.*;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
@@ -36,7 +35,8 @@ public class OpenAiProvider
         EvidenceInterpretationProvider,
         ContextResearchProvider,
         MerchantEvidenceCollectionProvider,
-        GoalFitReasoningProvider
+        GoalFitReasoningProvider,
+        RecommendationReasoningProvider
 {
 
     private final OpenAIClient openAIClient;
@@ -344,22 +344,25 @@ public class OpenAiProvider
                experience, compatibility, and other strong preferences
                expressed in the original request.
 
-            5. Treat the supplied product description as discovered product
-               information. Treat the discovery match reason as an earlier
-               relevance signal, not as a conclusion that must be accepted.
-
-            6. Hard screening has already removed candidates that can be
-               cheaply proven to be non-starters. Do not repeat hard screening.
-
-            7. Do not perform merchant trust assessment.
-               Trust Maps runs later for shortlisted contenders.
-
-            8. Do not resolve shipping, tax, inventory, or final delivery
-               commitments. Those are late-binding execution facts
-               resolved later.
-
-            9. Do not determine whether the agent is authorized to execute
-               the purchase.
+            5. Hard screening has already removed candidates that can be cheaply
+                                   proven to be non-starters. Do not repeat that filtering step.
+                
+            6. Rank candidates based on apparent product fit to the consumer's
+                                   original objective, context, and stated preferences.
+                
+            7. Do not evaluate, compare, or rank candidates based on merchant
+                 reputation, merchant reliability, customer reviews, return
+                                   experience, or other merchant trust signals. Merchant trust is
+                                   evaluated separately after this shortlist is produced.
+                
+            8. Do not infer or investigate current shipping cost, tax, inventory
+                                   availability, or whether a delivery date can actually be met.
+                                   If those facts are not explicitly present in the supplied candidate
+                                   information, leave them unknown.
+                
+            9. Do not decide whether a purchase may be executed on the consumer's
+                                   behalf. Do not reason about permissions, consent, spending authority,
+                                   or whether the agent is allowed to complete the transaction.
 
             10. Rank every supplied candidate exactly once.
 
@@ -1274,5 +1277,168 @@ public class OpenAiProvider
                 Consumer goal:
                 %s
                 """.formatted(rawGoalText);
+    }
+
+    @Override
+    public RecommendationReasoningDecision recommend(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates
+    ) {
+        StructuredResponseCreateParams<RecommendationReasoningDecision> params =
+                ResponseCreateParams.builder()
+                        .model(MODEL)
+                        .input(
+                                buildRecommendationPrompt(
+                                        goal,
+                                        candidates
+                                )
+                        )
+                        .text(RecommendationReasoningDecision.class)
+                        .build();
+
+        StructuredResponse<RecommendationReasoningDecision> response =
+                openAIClient.responses()
+                        .create(params);
+
+        return response.output()
+                .stream()
+                .flatMap(outputItem ->
+                        outputItem.message().stream()
+                )
+                .flatMap(message ->
+                        message.content().stream()
+                )
+                .flatMap(content ->
+                        content.outputText().stream()
+                )
+                .findFirst()
+                .orElseThrow(() ->
+                        new IllegalStateException(
+                                "OpenAI returned no structured recommendation decision."
+                        )
+                );
+    }
+
+    private String buildRecommendationPrompt(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates
+    ) {
+        return """
+            You are performing recommendation reasoning
+            for Sentinq shopping orchestration.
+
+            Your task is to select the strongest overall candidate
+            from the supplied contenders.
+
+            Consumer goal:
+            - Original request: %s
+            - Product: %s
+
+            Trust-assessed goal-fit contenders:
+            %s
+
+            Rules:
+
+            1. Evaluate only the candidates supplied to you.
+               Do not search for additional products or evidence.
+
+            2. Consider both:
+               - how well each product appears to accomplish the
+                 consumer's original shopping objective, and
+               - what the supplied merchant trust assessment says
+                 about trusting the merchant for this purchase.
+
+            3. Use the supplied goal-fit rank and reasoning as evidence
+               of product fit. Do not redo product discovery.
+
+            4. Use only the supplied trust assessment when reasoning
+               about merchant trust. Do not invent merchant reputation,
+               reviews, reliability, or other trust evidence.
+
+            5. Do not treat goal-fit rank as automatically decisive.
+               A lower-ranked product may be preferred when the supplied
+               trust assessment provides a material reason to prefer it.
+
+            6. Do not treat the strongest merchant trust assessment as
+               automatically decisive. A trustworthy merchant does not
+               compensate for a product that poorly accomplishes the
+               consumer's objective.
+
+            7. Weigh tradeoffs contextually rather than using a fixed
+               numerical formula between goal fit and merchant trust.
+
+            8. Distinguish a material trust concern from mere uncertainty
+               or absence of evidence. Do not penalize a candidate simply
+               because its trust assessment contains less evidence.
+
+            9. Do not infer or investigate current shipping cost, tax,
+               inventory availability, or whether a delivery date can
+               actually be met. Those facts are evaluated separately
+               after recommendation.
+
+            10. Do not decide whether the purchase may be executed on
+                the consumer's behalf. Do not reason about permissions,
+                consent, spending authority, or whether the agent is
+                authorized to complete the transaction.
+
+                11. selectedOfferId must exactly match the offerId of one
+                    of the supplied candidates.
+                
+                12. Do not create, modify, reconstruct, or substitute an offer.
+                
+                13. reasoning should explain the important tradeoff that led
+                    to the selection, including why the selected candidate is
+                    preferable to the strongest alternatives.
+
+            14. reasoning should explain the important tradeoff that
+                led to the selection, including why the selected
+                candidate is preferable to the strongest alternatives.
+
+            Return only the structured RecommendationReasoningDecision.
+            """
+                .formatted(
+                        goal.getOriginalRequest(),
+                        goal.getProductName(),
+                        formatRecommendationCandidates(
+                                candidates
+                        )
+                );
+    }
+
+    private String formatRecommendationCandidates(
+            List<TrustAssessedCandidate> candidates
+    ) {
+        return candidates.stream()
+                .map(candidate -> {
+                    CandidateOffer offer =
+                            candidate.goalFitCandidate().offer();
+
+                    return """
+                        Candidate:
+                        - Offer ID: %s
+                        - Merchant: %s
+                        - Product: %s
+                        - Product description: %s
+                        - Product price cents: %s
+                        - Goal-fit rank: %s
+                        - Goal-fit reasoning: %s
+                        - Merchant trust assessment: %s
+                        """
+                            .formatted(
+                                    offer.getOfferId(),
+                                    offer.getMerchantName(),
+                                    offer.getProductName(),
+                                    offer.getProductDescription(),
+                                    offer.getProductPriceCents(),
+                                    candidate.goalFitCandidate().rank(),
+                                    candidate.goalFitCandidate().reasoning(),
+                                    candidate.trustAssessment()
+                            );
+                })
+                .collect(
+                        java.util.stream.Collectors.joining(
+                                "\n"
+                        )
+                );
     }
 }

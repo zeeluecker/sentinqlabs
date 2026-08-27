@@ -9,5 +9,5 @@ public enum TrustSignal {
     MIXED,
     CONCERNING,
     STRONGLY_CONCERNING,
-    NO_INFERENCE
+    FAVORABLE, NO_INFERENCE
 }
