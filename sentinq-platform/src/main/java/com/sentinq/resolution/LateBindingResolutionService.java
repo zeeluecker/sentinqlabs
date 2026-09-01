@@ -29,20 +29,20 @@ public class LateBindingResolutionService {
                 offer.getProductPriceCents()
         );
 
-        /*
-         * Mock execution values for the current MVP.
-         *
-         * These will eventually be replaced by real-time
-         * late-binding resolution of shipping, tax,
-         * inventory, and delivery commitments.
-         */
-        int shippingCents = 1800;
-        int taxCents = 600;
+        Integer shippingCents =
+                facts.getShippingCents();
+
+        Integer taxCents =
+                facts.getTaxCents();
 
         int resolvedTotalCents =
                 offer.getProductPriceCents()
-                        + shippingCents
-                        + taxCents;
+                        + (shippingCents != null
+                        ? shippingCents
+                        : 0)
+                        + (taxCents != null
+                        ? taxCents
+                        : 0);
 
         result.setShippingCents(
                 shippingCents
@@ -57,12 +57,13 @@ public class LateBindingResolutionService {
         );
 
         result.setInventoryAvailable(
-                true
+                Boolean.TRUE.equals(
+                        facts.getInventoryAvailable()
+                )
         );
 
         result.setEstimatedDeliveryDate(
-                mandate.getDeliveryDeadline()
-                        .plusDays(2)
+                facts.getEstimatedDeliveryDate()
         );
 
         /*

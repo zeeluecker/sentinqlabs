@@ -171,193 +171,98 @@ public class ClaudeMerchantEvidenceSynthesisProvider
                 );
 
         return """
-    You are synthesizing a merchant Trust Map for Sentinq.
+        You are synthesizing a merchant Trust Map for Sentinq.
 
-    Return only a valid JSON object.
-    Do not include markdown, commentary, citations outside
-    the JSON, or a code fence.
+        Return ONLY one valid JSON object.
+        No markdown, code fences, commentary, or text outside the JSON.
 
-    Merchant ID:
-    %s
+        Merchant ID:
+        %s
 
-    Merchant name:
-    %s
+        Merchant name:
+        %s
 
-    Consumer context:
-    %s
+        Consumer context:
+        %s
 
-    Evidence:
-    %s
+        Evidence:
+        %s
 
-    Allowed TrustDimension values:
-    %s
+        Allowed TrustDimension values:
+        %s
 
-    Allowed TrustSignal values:
-    %s
+        Allowed TrustSignal values:
+        %s
 
-    Allowed ContextType values:
-    %s
+        Allowed ContextType values:
+        %s
 
-    The top-level JSON object must contain exactly these fields:
+        ENUM RULE:
+        Every enum-valued field MUST exactly match one of the allowed
+        values above. Copy enum values exactly. Never invent, rename,
+        abbreviate, or alter an enum value.
 
-    - merchantId
-    - merchantName
-    - themes
-    - materialQuestions
-    - supportingEvidenceIds
-    - confidence
+        Return exactly this structure:
 
-    Do not add any other top-level fields.
-
-    Use exactly this JSON structure:
-
-    {
-      "merchantId": "string",
-      "merchantName": "string",
-      "themes": [
         {
-          "dimension": "PRODUCT_QUALITY",
-          "theme": "string",
-          "signal": "MIXED",
-          "evidenceIds": ["evidence-id"]
+          "merchantId": "string",
+          "merchantName": "string",
+          "themes": [
+            {
+              "dimension": "PRODUCT_QUALITY",
+              "theme": "string",
+              "signal": "MIXED",
+              "evidenceIds": ["evidence-id"]
+            }
+          ],
+          "materialQuestions": [
+            {
+              "dimension": "PRODUCT_QUALITY",
+              "contextType": "PRODUCT_ATTRIBUTE",
+              "question": "string",
+              "reason": "string"
+            }
+          ],
+          "supportingEvidenceIds": ["evidence-id"],
+          "confidence": 0.75
         }
-      ],
-      "materialQuestions": [
-        {
-          "dimension": "PRODUCT_QUALITY",
-          "contextType": "PRODUCT_ATTRIBUTE",
-          "question": "string",
-          "reason": "string"
-        }
-      ],
-      "supportingEvidenceIds": [
-        "evidence-id"
-      ],
-      "confidence": 0.75
-    }
 
-    Field names must match this structure exactly.
+        CONTRACT:
+        - Use exactly the fields shown above. Do not rename or add fields.
+        - merchantId and merchantName must exactly match the supplied values.
+        - themes, materialQuestions, supportingEvidenceIds, and evidenceIds
+          must always be JSON arrays. Use [] when empty.
+        - confidence must be a JSON number from 0.0 to 1.0.
+        - evidenceIds may contain only evidence IDs supplied in this request.
+          Never invent evidence IDs.
 
-    Do not rename fields or introduce aliases.
+        SYNTHESIS:
+        1. Evaluate only TrustDimensions marked important in the consumer context.
+        2. Group related evidence into a small number of meaningful themes.
+           Do not create one theme per evidence item.
+        3. Preserve meaningful disagreement and uncertainty.
+        4. Evidence volume alone does not increase confidence.
+        5. Merchant first-party evidence establishes what the merchant claims
+           or promises; it is not independent proof of performance.
+        6. Independent customer, community, complaint, or expert evidence may
+           corroborate, contradict, qualify, or contextualize merchant claims.
+        7. Create a MaterialTrustQuestion only when meaningful conflict,
+           ambiguity, or uncertainty remains AND resolving it could plausibly
+           change the trust assessment for this consumer or purchase.
+        8. Do not create a question merely because more information could be
+           useful or a merchant claim lacks independent verification.
+        9. Combine overlapping questions. Normally return at most one question
+           per important TrustDimension.
+        10. Return no material questions when further research is unlikely to
+            materially change the assessment.
+        11. supportingEvidenceIds should include only evidence that materially
+            supports the synthesis; it need not include every evidence item.
+        12. confidence measures confidence in this synthesis of the evidence
+            landscape, NOT confidence in the merchant.
+        13. Do not recommend whether the consumer should buy.
 
-    Do not return fields such as:
-    - trustDimension
-    - summary
-    - evidenceSummary
-    - impact
-    - unresolvedQuestions
-    - resolvedQuestions
-    - notes
-    - assessment
-    - overallSignal
-    - recommendation
-    - researchSummary
-
-    confidence must be a JSON number between 0.0 and 1.0.
-
-    Correct:
-    "confidence": 0.75
-
-    Incorrect:
-    "confidence": "HIGH"
-
-    themes must always be a JSON array.
-
-    materialQuestions must always be a JSON array.
-
-    supportingEvidenceIds must always be a JSON array.
-
-    theme.evidenceIds must always be a JSON array.
-
-    If there are no material questions, return:
-
-    "materialQuestions": []
-
-    If there are no supporting evidence IDs, return:
-
-    "supportingEvidenceIds": []
-
-    merchantId and merchantName must match the supplied values exactly.
-
-    Understand the evidence landscape across all supplied
-    evidence and return a bounded merchant-level synthesis.
-
-    Synthesis rules:
-
-    1. Group related evidence into a small number of meaningful
-       recurring themes.
-
-    2. Do not create one theme per evidence item.
-
-    3. Preserve disagreement and uncertainty.
-       Conflicting evidence is part of the Trust Map.
-
-    4. Evidence volume is not proof.
-       Repeated similar claims should not automatically increase
-       confidence.
-
-    5. Merchant first-party evidence establishes what the merchant
-       claims, promises, or describes.
-
-    6. Merchant first-party evidence is not independent proof
-       that the merchant consistently performs as claimed.
-
-    7. Independent customer, community, complaint, and expert
-       evidence may corroborate, contradict, qualify, or
-       contextualize merchant claims.
-
-    8. Evaluate only TrustDimensions identified as important
-       in the supplied consumer context.
-
-    9. Do not create themes or MaterialTrustQuestions for
-       TrustDimensions outside that scope.
-
-    10. A MaterialTrustQuestion must represent meaningful conflict,
-        ambiguity, or uncertainty whose resolution could plausibly
-        change the trust assessment for this consumer or purchase.
-
-    11. Do not create a MaterialTrustQuestion merely because
-        additional information could theoretically be useful.
-
-    12. Do not create a MaterialTrustQuestion merely because
-        a merchant claim lacks independent verification.
-
-    13. Prefer the smallest set of decision-relevant questions.
-
-    14. Combine substantially overlapping questions.
-
-    15. Normally return no more than one MaterialTrustQuestion
-        per important TrustDimension.
-
-    16. Return zero MaterialTrustQuestions when further research
-        is unlikely to materially change the assessment.
-
-    17. theme.evidenceIds may contain only evidence IDs supplied
-        in this request.
-
-    18. supportingEvidenceIds may contain only evidence IDs
-        supplied in this request.
-
-    19. Never invent evidence IDs.
-
-    20. supportingEvidenceIds should contain the evidence IDs
-        that materially support the overall synthesis.
-        It does not need to contain every supplied evidence ID.
-
-    21. Preserve uncertainty when the supplied evidence does not
-        justify a stronger conclusion.
-
-    22. Do not produce an overall merchant recommendation.
-
-    23. Do not decide whether the consumer should buy.
-
-    24. confidence represents confidence in the synthesis of
-        the evidence landscape, not confidence in the merchant.
-
-    25. Preserve merchantId and merchantName exactly as supplied.
-
-    Return only the complete JSON object.
-    """.formatted(
+        Return ONLY the complete JSON object.
+        """.formatted(
                 merchantId,
                 merchantName,
                 formattedContext,

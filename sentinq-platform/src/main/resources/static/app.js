@@ -35,10 +35,12 @@ const appState = {
 
 const PAGE_TITLES = {
   overview: "Command Center",
+  preferences: "Consumer Preferences",
   agents: "Connected Agents",
   mandates: "Mandates",
   audit: "Audit Timeline",
-  shop: "Shopping Agent"
+  shop: "Shopping Agent",
+  models: "Model Assignments"
 };
 // -----------------------------------------------------------------------------
 // 2. Cache DOM references used repeatedly
@@ -62,6 +64,7 @@ const elements = {
   selectedResult: document.getElementById("selectedResult"),
   trustMapResults: document.getElementById("trustMapResults"),
   candidateResults: document.getElementById("candidateResults")
+
 };
 
 const agentSelect =
@@ -152,6 +155,11 @@ const connectedAgentsList =
         document.getElementById(
                 "connectedAgentsList"
         );
+
+const modelAssignmentsContent =
+                document.getElementById(
+                        "modelAssignmentsContent"
+                );
 // -----------------------------------------------------------------------------
 // 3. Application startup and event registration
 // -----------------------------------------------------------------------------
@@ -367,6 +375,98 @@ function renderConnectedAgents(
 
                 </article>
             `).join("");
+}
+
+
+function renderModelAssignments() {
+
+    const stages = [
+        {
+            id: "goal-interpretation",
+            number: "01",
+            name: "Goal Interpretation",
+            description:
+                    "Interpret the consumer's natural-language goal, preferences, and hard constraints."
+        },
+        {
+            id: "product-discovery",
+            number: "02",
+            name: "Product Discovery",
+            description:
+                    "Search for candidate products and merchants that could satisfy the interpreted goal."
+        },
+        {
+            id: "goal-fit",
+            number: "03",
+            name: "Goal-Fit Reasoning",
+            description:
+                    "Rank viable candidates by how well they accomplish the consumer's objective."
+        },
+        {
+            id: "trust-maps",
+            number: "04",
+            name: "Trust Maps",
+            description:
+                    "Investigate and synthesize merchant evidence for shortlisted contenders."
+        },
+        {
+            id: "recommendation",
+            number: "05",
+            name: "Recommendation Reasoning",
+            description:
+                    "Combine goal fit and merchant trust evidence to select the recommended candidate."
+        }
+    ];
+
+    modelAssignmentsContent.innerHTML = `
+        <div class="model-assignment-header">
+            <div>
+                <strong>
+                    Shopping Orchestration
+                </strong>
+                <p>
+                    Assign a model to each reasoning stage.
+                </p>
+            </div>
+        </div>
+
+        <div class="model-assignment-list">
+            ${stages.map(stage => `
+                <div
+                    class="model-assignment-row"
+                    data-stage="${stage.id}"
+                >
+                    <span class="model-stage-number">
+                        ${stage.number}
+                    </span>
+
+                    <span class="model-stage-main">
+                        <strong>
+                            ${stage.name}
+                        </strong>
+                        <span>
+                            ${stage.description}
+                        </span>
+                    </span>
+
+                    <select
+                        class="model-stage-select"
+                        data-model-stage="${stage.id}"
+                    >
+                        <option value="openai">
+                            OpenAI
+                        </option>
+                        <option value="anthropic">
+                            Claude
+                        </option>
+                        <option value="gemini">
+                            Gemini
+                        </option>
+                    </select>
+                </div>
+            `).join("")}
+        </div>
+    `;
 }
 
 // -----------------------------------------------------------------------------
@@ -3027,11 +3127,6 @@ function createTrustMapSummaryHtml(
     +
     (trustAssessment.researchedEvidence?.length ?? 0);
 
-  const confidence =
-    Math.round(
-      (synthesis.confidence ?? 0) * 100
-    );
-
   return `
     <div class="trust-map-summary">
 
@@ -3046,9 +3141,6 @@ function createTrustMapSummaryHtml(
           </h4>
         </div>
 
-        <span class="badge">
-          ${confidence}% confidence
-        </span>
       </div>
 
       <p class="trust-map-take">

@@ -22,6 +22,9 @@
         <button class="nav-item" data-view="mandates">Mandates <span id="mandateCount">0</span></button>
         <button class="nav-item" data-view="audit">Audit</button>
         <button class="nav-item" data-view="shop">Shopping Agent</button>
+          <button class="nav-item" data-view="models">
+              Model Assignments
+          </button>
 
       </nav>
       <div class="sidebar-footer"><span class="status-dot"></span><div><strong>Sentinq Platform</strong><span id="platformStatus">Checking connection…</span></div></div>
@@ -384,7 +387,7 @@
                                 <input
                                         id="deadlineInput"
                                         type="date"
-                                        value="2026-08-31"
+                                        value="2026-09-30"
                                 />
                             </div>
                         </div>
@@ -447,6 +450,183 @@
                 <section id="trustMapResults"></section>
                 <section id="candidateResults"></section>
             </div>
+        </section>
+
+        <section class="view" id="modelsView">
+
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">
+                        MODEL CONFIGURATION
+                    </p>
+
+                    <h2>
+                        Shopping Orchestration
+                    </h2>
+
+                    <p class="section-copy">
+                        Assign a model to each reasoning stage
+                        of the shopping orchestration.
+                    </p>
+                </div>
+            </div>
+
+            <article class="panel">
+
+                <div class="model-assignment-list">
+
+                    <div class="model-assignment-row">
+                        <div>
+                            <p class="eyebrow">
+                                STAGE 01
+                            </p>
+
+                            <h3>
+                                Goal Interpretation
+                            </h3>
+
+                            <p class="section-copy">
+                                Interpret the consumer's natural-language
+                                shopping goal.
+                            </p>
+                        </div>
+
+                        <select>
+                            <option value="openai">
+                                OpenAI
+                            </option>
+                            <option value="anthropic">
+                                Claude
+                            </option>
+                            <option value="gemini">
+                                Gemini
+                            </option>
+                        </select>
+                    </div>
+
+
+                    <div class="model-assignment-row">
+                        <div>
+                            <p class="eyebrow">
+                                STAGE 02
+                            </p>
+
+                            <h3>
+                                Product Discovery
+                            </h3>
+
+                            <p class="section-copy">
+                                Search for candidate products and merchants.
+                            </p>
+                        </div>
+
+                        <select>
+                            <option value="openai">
+                                OpenAI
+                            </option>
+                            <option value="anthropic">
+                                Claude
+                            </option>
+                            <option value="gemini">
+                                Gemini
+                            </option>
+                        </select>
+                    </div>
+
+
+                    <div class="model-assignment-row">
+                        <div>
+                            <p class="eyebrow">
+                                STAGE 03
+                            </p>
+
+                            <h3>
+                                Goal-Fit Reasoning
+                            </h3>
+
+                            <p class="section-copy">
+                                Rank viable candidates against
+                                the consumer's objective.
+                            </p>
+                        </div>
+
+                        <select>
+                            <option value="openai">
+                                OpenAI
+                            </option>
+                            <option value="anthropic">
+                                Claude
+                            </option>
+                            <option value="gemini">
+                                Gemini
+                            </option>
+                        </select>
+                    </div>
+
+
+                    <div class="model-assignment-row">
+                        <div>
+                            <p class="eyebrow">
+                                STAGE 04
+                            </p>
+
+                            <h3>
+                                Trust Maps
+                            </h3>
+
+                            <p class="section-copy">
+                                Research and assess merchant evidence
+                                for shortlisted contenders.
+                            </p>
+                        </div>
+
+                        <select>
+                            <option value="openai">
+                                OpenAI
+                            </option>
+                            <option value="anthropic">
+                                Claude
+                            </option>
+                            <option value="gemini">
+                                Gemini
+                            </option>
+                        </select>
+                    </div>
+
+
+                    <div class="model-assignment-row">
+                        <div>
+                            <p class="eyebrow">
+                                STAGE 05
+                            </p>
+
+                            <h3>
+                                Recommendation Reasoning
+                            </h3>
+
+                            <p class="section-copy">
+                                Select the recommended candidate using
+                                goal fit and Trust Map results.
+                            </p>
+                        </div>
+
+                        <select>
+                            <option value="openai">
+                                OpenAI
+                            </option>
+                            <option value="anthropic">
+                                Claude
+                            </option>
+                            <option value="gemini">
+                                Gemini
+                            </option>
+                        </select>
+                    </div>
+
+                </div>
+
+            </article>
+
         </section>
     </main>
   </div>

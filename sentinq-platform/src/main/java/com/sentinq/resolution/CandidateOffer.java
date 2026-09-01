@@ -25,6 +25,7 @@ public class CandidateOffer {
     private Integer productPriceCents;
     private Integer fulfillmentScore;
     private Integer reviewScore;
+    private String merchantUrl;
 
     public String getOfferId() {
         return offerId;
@@ -96,5 +97,13 @@ public class CandidateOffer {
 
     public void setDiscoveryMatchReason(String discoveryMatchReason) {
         this.discoveryMatchReason = discoveryMatchReason;
+    }
+
+    public String getMerchantUrl() {
+        return merchantUrl;
+    }
+
+    public void setMerchantUrl(String merchantUrl) {
+        this.merchantUrl = merchantUrl;
     }
 }

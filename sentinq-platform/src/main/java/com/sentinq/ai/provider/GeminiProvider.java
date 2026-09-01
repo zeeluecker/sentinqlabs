@@ -18,6 +18,12 @@ import com.sentinq.ai.ProductSearchResult;
 import com.sentinq.goal.Goal;
 import com.sentinq.preference.ConsumerPreferences;
 import java.util.List;
+import com.sentinq.resolution.CandidateOffer;
+import com.sentinq.shopping.GoalFitReasoningDecision;
+import com.sentinq.shopping.GoalFitReasoningProvider;
+import com.sentinq.shopping.RecommendationReasoningDecision;
+import com.sentinq.shopping.RecommendationReasoningProvider;
+import com.sentinq.shopping.TrustAssessedCandidate;
 
 /**
  * Gemini implementation of Sentinq's reasoning-provider contract.
@@ -30,7 +36,9 @@ import java.util.List;
 public class GeminiProvider
         implements LlmProvider,
         ProductSearchProvider,
-        EvidenceInterpretationProvider {
+        EvidenceInterpretationProvider,
+        GoalFitReasoningProvider,
+        RecommendationReasoningProvider{
 
     private final Client geminiClient;
     private final ObjectMapper objectMapper;
@@ -840,6 +848,433 @@ public class GeminiProvider
                     "Consumer preferences are required for product search."
             );
         }
+    }
+
+    @Override
+    public GoalFitReasoningDecision rank(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        validateGoalFitInputs(
+                goal,
+                candidates
+        );
+
+        GenerateContentResponse response =
+                geminiClient.models.generateContent(
+                        MODEL,
+                        buildGoalFitPrompt(
+                                goal,
+                                candidates
+                        ),
+                        null
+                );
+
+        return deserializeGoalFitDecision(
+                response.text()
+        );
+    }
+
+    private GoalFitReasoningDecision deserializeGoalFitDecision(
+            String responseText
+    ) {
+        String cleanedResponse =
+                removeMarkdownCodeFence(
+                        responseText
+                );
+
+        try {
+            return objectMapper.readValue(
+                    cleanedResponse,
+                    GoalFitReasoningDecision.class
+            );
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "Gemini returned invalid goal-fit reasoning JSON: "
+                            + responseText,
+                    exception
+            );
+        }
+    }
+
+    private String buildGoalFitPrompt(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        return """
+        You are performing lightweight goal-fit reasoning
+        for Sentinq shopping orchestration.
+
+        Your task is to rank the supplied candidate offers
+        according to how well each candidate appears to
+        accomplish the consumer's shopping goal.
+
+        Return only a valid JSON object.
+        Do not include markdown, commentary, or a code fence.
+
+                Use exactly this structure:
+                
+                 {
+                   "candidates": [
+                     {
+                       "offer": {
+                         "offerId": "string",
+                         "merchantId": "string",
+                         "merchantName": "string",
+                         "productName": "string",
+                         "productDescription": "string",
+                         "discoveryMatchReason": "string",
+                         "productPriceCents": 0,
+                         "fulfillmentScore": 0,
+                         "reviewScore": 0
+                       },
+                       "rank": 1,
+                       "reasoning": "string"
+                     }
+                   ]
+                 }
+
+        Consumer goal:
+        - Original request: %s
+        - Product: %s
+
+        Candidate offers:
+        %s
+
+        Rules:
+
+        1. Evaluate only the candidates supplied to you.
+
+        2. Do not search for additional products or evidence.
+
+        3. Preserve the consumer's original objective and context.
+           The original request is the primary source for understanding
+           what the consumer is trying to accomplish.
+
+        4. Do not reduce the consumer's goal to only hard constraints.
+           Consider the qualitative objective, intended use, appearance,
+           experience, compatibility, and other strong preferences
+           expressed in the original request.
+
+        5. Hard screening has already removed candidates that can be
+           cheaply proven to be non-starters. Do not repeat that
+           filtering step.
+
+        6. Rank candidates based on apparent product fit to the
+           consumer's original objective, context, and stated preferences.
+
+        7. Do not evaluate, compare, or rank candidates based on merchant
+           reputation, merchant reliability, customer reviews, return
+           experience, or other merchant trust signals. Merchant trust is
+           evaluated separately after this shortlist is produced.
+
+        8. Do not infer or investigate current shipping cost, tax,
+           inventory availability, or whether a delivery date can
+           actually be met. If those facts are not explicitly present
+           in the supplied candidate information, leave them unknown.
+
+        9. Do not decide whether a purchase may be executed on the
+           consumer's behalf. Do not reason about permissions, consent,
+           spending authority, or whether the agent is allowed to
+           complete the transaction.
+
+        10. Rank every supplied candidate exactly once.
+
+        11. rank 1 means the strongest apparent fit for this
+            consumer goal.
+
+        12. Ranks must be unique and sequential:
+            1, 2, 3, and so on.
+
+        13. offerId must exactly match the offerId of the supplied
+            candidate being ranked.
+
+        14. reasoning should briefly explain why the candidate occupies
+            that position relative to the consumer's stated objective.
+
+        15. Do not invent product attributes that are not present
+            in the supplied candidate information.
+        
+        16. The offer object must reproduce the supplied CandidateOffer
+              exactly. Do not change, infer, add, remove, or normalize any
+              offer field or field value.
+
+        Return only the JSON object.
+        """
+                .formatted(
+                        goal.getOriginalRequest(),
+                        goal.getProductName(),
+                        formatGoalFitCandidates(
+                                candidates
+                        )
+                );
+    }
+
+    private String formatGoalFitCandidates(
+            List<CandidateOffer> candidates
+    ) {
+        StringBuilder builder =
+                new StringBuilder();
+
+        for (int i = 0; i < candidates.size(); i++) {
+
+            CandidateOffer candidate =
+                    candidates.get(i);
+
+            builder.append("Candidate ")
+                    .append(i + 1)
+                    .append(":\n");
+
+            builder.append("- Offer ID: ")
+                    .append(candidate.getOfferId())
+                    .append("\n");
+
+            builder.append("- Merchant ID: ")
+                    .append(candidate.getMerchantId())
+                    .append("\n");
+
+            builder.append("- Merchant: ")
+                    .append(candidate.getMerchantName())
+                    .append("\n");
+
+            builder.append("- Product: ")
+                    .append(candidate.getProductName())
+                    .append("\n");
+
+            builder.append("- Product description: ")
+                    .append(candidate.getProductDescription())
+                    .append("\n");
+
+            builder.append("- Discovery match reason: ")
+                    .append(candidate.getDiscoveryMatchReason())
+                    .append("\n");
+
+            builder.append("- Product price cents: ")
+                    .append(candidate.getProductPriceCents())
+                    .append("\n");
+
+            builder.append("- Fulfillment score: ")
+                    .append(candidate.getFulfillmentScore())
+                    .append("\n");
+
+            builder.append("- Review score: ")
+                    .append(candidate.getReviewScore())
+                    .append("\n\n");
+        }
+
+        return builder.toString();
+    }
+
+    private void validateGoalFitInputs(
+            Goal goal,
+            List<CandidateOffer> candidates
+    ) {
+        if (goal == null) {
+            throw new IllegalArgumentException(
+                    "Goal is required for goal-fit reasoning."
+            );
+        }
+
+        if (candidates == null ||
+                candidates.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "At least one candidate is required for goal-fit reasoning."
+            );
+        }
+    }
+
+    @Override
+    public RecommendationReasoningDecision recommend(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates
+    ) {
+        validateRecommendationInputs(
+                goal,
+                candidates
+        );
+
+        GenerateContentResponse response =
+                geminiClient.models.generateContent(
+                        MODEL,
+                        buildRecommendationPrompt(
+                                goal,
+                                candidates
+                        ),
+                        null
+                );
+
+        return deserializeRecommendationDecision(
+                response.text()
+        );
+    }
+
+    private RecommendationReasoningDecision deserializeRecommendationDecision(
+            String responseText
+    ) {
+        String cleanedResponse =
+                removeMarkdownCodeFence(
+                        responseText
+                );
+
+        try {
+            return objectMapper.readValue(
+                    cleanedResponse,
+                    RecommendationReasoningDecision.class
+            );
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException(
+                    "Gemini returned invalid recommendation reasoning JSON: "
+                            + responseText,
+                    exception
+            );
+        }
+    }
+
+    private void validateRecommendationInputs(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates
+    ) {
+        if (goal == null) {
+            throw new IllegalArgumentException(
+                    "Goal is required for recommendation reasoning."
+            );
+        }
+
+        if (candidates == null ||
+                candidates.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "At least one trust-assessed candidate is required for recommendation reasoning."
+            );
+        }
+    }
+
+    private String buildRecommendationPrompt(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates
+    ) {
+        return """
+        You are performing recommendation reasoning
+        for Sentinq shopping orchestration.
+
+        Your task is to select the strongest overall candidate
+        from the supplied contenders.
+
+        Return only a valid JSON object.
+        Do not include markdown, commentary, or a code fence.
+
+        Use exactly this structure:
+
+        {
+          "selectedOfferId": "string",
+          "reasoning": "string"
+        }
+
+        Consumer goal:
+        - Original request: %s
+        - Product: %s
+
+        Trust-assessed goal-fit contenders:
+        %s
+
+        Rules:
+
+        1. Evaluate only the candidates supplied to you.
+           Do not search for additional products or evidence.
+
+        2. Consider both:
+           - how well each product appears to accomplish the
+             consumer's original shopping objective, and
+           - what the supplied merchant trust assessment says
+             about trusting the merchant for this purchase.
+
+        3. Use the supplied goal-fit rank and reasoning as evidence
+           of product fit. Do not redo product discovery.
+
+        4. Use only the supplied trust assessment when reasoning
+           about merchant trust. Do not invent merchant reputation,
+           reviews, reliability, or other trust evidence.
+
+        5. Do not treat goal-fit rank as automatically decisive.
+           A lower-ranked product may be preferred when the supplied
+           trust assessment provides a material reason to prefer it.
+
+        6. Do not treat the strongest merchant trust assessment as
+           automatically decisive. A trustworthy merchant does not
+           compensate for a product that poorly accomplishes the
+           consumer's objective.
+
+        7. Weigh tradeoffs contextually rather than using a fixed
+           numerical formula between goal fit and merchant trust.
+
+        8. Distinguish a material trust concern from mere uncertainty
+           or absence of evidence. Do not penalize a candidate simply
+           because its trust assessment contains less evidence.
+
+        9. Do not infer or investigate current shipping cost, tax,
+           inventory availability, or whether a delivery date can
+           actually be met. Those facts are evaluated separately
+           after recommendation.
+
+        10. Do not decide whether the purchase may be executed on
+            the consumer's behalf. Do not reason about permissions,
+            consent, spending authority, or whether the agent is
+            authorized to complete the transaction.
+
+        11. selectedOfferId must exactly match the offerId of one
+            of the supplied candidates.
+
+        12. Do not create, modify, reconstruct, or substitute an offer.
+
+        13. reasoning should explain the important tradeoff that led
+            to the selection, including why the selected candidate is
+            preferable to the strongest alternatives.
+
+        Return only the JSON object.
+        """
+                .formatted(
+                        goal.getOriginalRequest(),
+                        goal.getProductName(),
+                        formatRecommendationCandidates(
+                                candidates
+                        )
+                );
+    }
+
+    private String formatRecommendationCandidates(
+            List<TrustAssessedCandidate> candidates
+    ) {
+        return candidates.stream()
+                .map(candidate -> {
+                    CandidateOffer offer =
+                            candidate.goalFitCandidate().offer();
+
+                    return """
+                    Candidate:
+                    - Offer ID: %s
+                    - Merchant: %s
+                    - Product: %s
+                    - Product description: %s
+                    - Product price cents: %s
+                    - Goal-fit rank: %s
+                    - Goal-fit reasoning: %s
+                    - Merchant trust assessment: %s
+                    """
+                            .formatted(
+                                    offer.getOfferId(),
+                                    offer.getMerchantName(),
+                                    offer.getProductName(),
+                                    offer.getProductDescription(),
+                                    offer.getProductPriceCents(),
+                                    candidate.goalFitCandidate().rank(),
+                                    candidate.goalFitCandidate().reasoning(),
+                                    candidate.trustAssessment()
+                            );
+                })
+                .collect(
+                        java.util.stream.Collectors.joining(
+                                "\n"
+                        )
+                );
     }
 
 }

@@ -12,6 +12,8 @@ import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.TrustContext;
 import org.springframework.stereotype.Component;
 
+import java.util.stream.Collectors;
+
 @Component
 public class ClaudeMerchantEvidenceCollectionProvider
         implements MerchantEvidenceCollectionProvider {
@@ -82,10 +84,26 @@ public class ClaudeMerchantEvidenceCollectionProvider
 
         String responseText =
                 extractText(response);
-
-        return deserialize(
-                responseText
+        System.out.println(
+                "Claude merchant evidence response received. blocks="
+                        + response.content().size()
         );
+
+        System.out.println(
+                "Claude merchant evidence extracted text length="
+                        + responseText.length()
+        );
+        System.out.println(
+                "Claude merchant evidence text prefix: "
+                        + responseText.substring(0, Math.min(500, responseText.length()))
+        );
+        try {
+            return deserialize(
+                    responseText
+            );
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private String buildPrompt(
@@ -103,6 +121,8 @@ public class ClaudeMerchantEvidenceCollectionProvider
         Return only a valid JSON object.
         Do not include markdown, commentary, citations outside
         the JSON, or a code fence.
+        Do not include introductory text
+        Do not include any text before or after the JSON object.
 
         Merchant:
         - Merchant ID: %s
@@ -298,45 +318,76 @@ public class ClaudeMerchantEvidenceCollectionProvider
         );
     }
 
-    private MerchantEvidenceCollectionDecision deserialize(
-            String responseText
-    ) {
-        String cleaned =
-                removeMarkdownCodeFence(
-                        responseText
-                );
+    private MerchantEvidenceCollectionDecision deserialize(String responseText)
+            throws JsonProcessingException {
 
-        try {
-            return objectMapper.readValue(
-                    cleaned,
-                    MerchantEvidenceCollectionDecision.class
-            );
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException(
-                    "Claude returned invalid merchant evidence collection JSON: "
-                            + responseText,
-                    exception
-            );
-        }
+        String json = extractJson(responseText);
+
+        return objectMapper.readValue(
+                json,
+                MerchantEvidenceCollectionDecision.class
+        );
     }
 
-    private String extractText(
-            Message response
-    ) {
-        return response.content()
-                .stream()
-                .flatMap(content ->
-                        content.text().stream()
-                )
-                .map(text ->
-                        text.text()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "Claude returned no merchant evidence collection text."
-                        )
-                );
+    private String extractJson(String responseText) {
+        if (responseText == null || responseText.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Claude response text is required."
+            );
+        }
+
+        String text = responseText.trim();
+
+        // Claude may return:
+        //
+        // Based on the gathered evidence...
+        // ```json
+        // { ... }
+        // ```
+        int jsonFenceStart = text.indexOf("```json");
+
+        if (jsonFenceStart >= 0) {
+            int jsonStart =
+                    jsonFenceStart + "```json".length();
+
+            int fenceEnd =
+                    text.indexOf("```", jsonStart);
+
+            if (fenceEnd > jsonStart) {
+                return text.substring(
+                        jsonStart,
+                        fenceEnd
+                ).trim();
+            }
+        }
+
+        // Tolerate an unlabeled Markdown code fence too.
+        int fenceStart = text.indexOf("```");
+
+        if (fenceStart >= 0) {
+            int jsonStart =
+                    fenceStart + "```".length();
+
+            int fenceEnd =
+                    text.indexOf("```", jsonStart);
+
+            if (fenceEnd > jsonStart) {
+                return text.substring(
+                        jsonStart,
+                        fenceEnd
+                ).trim();
+            }
+        }
+
+        // Claude followed instructions and returned raw JSON.
+        return text;
+    }
+
+    private String extractText(Message response) {
+        return response.content().stream()
+                .filter(contentBlock -> contentBlock.isText())
+                .map(contentBlock -> contentBlock.asText().text())
+                .collect(Collectors.joining("\n"));
     }
 
     private String removeMarkdownCodeFence(
