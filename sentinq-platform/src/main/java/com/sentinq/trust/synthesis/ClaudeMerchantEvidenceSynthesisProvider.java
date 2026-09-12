@@ -7,6 +7,10 @@ import com.anthropic.models.messages.MessageCreateParams;
 import com.anthropic.models.messages.Model;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextType;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustDimension;
@@ -50,7 +54,7 @@ public class ClaudeMerchantEvidenceSynthesisProvider
     }
 
     @Override
-    public MerchantEvidenceSynthesis synthesizeEvidence(
+    public LlmResult<MerchantEvidenceSynthesis> synthesizeEvidence(
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
@@ -83,16 +87,102 @@ public class ClaudeMerchantEvidenceSynthesisProvider
                         .addUserMessage(prompt)
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
+        // TODO:
+// Detect provider-reported output truncation before classifying
+// response-processing failures as CONTRACT_VIOLATION.
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        String responseText =
-                extractText(response);
+        } catch (RuntimeException e) {
 
-        return deserializeSynthesis(
-                responseText
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence synthesis invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            MerchantEvidenceSynthesis synthesis =
+                    deserializeSynthesis(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence synthesis violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     @Override

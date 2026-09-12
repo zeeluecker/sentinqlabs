@@ -8,6 +8,10 @@ import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.WebSearchTool20250305;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Component;
@@ -40,7 +44,7 @@ public class ClaudeMerchantTargetedResearchProvider
     }
 
     @Override
-    public MerchantTargetedResearchDecision research(
+    public LlmResult<MerchantTargetedResearchDecision> research(
             String merchantId,
             String merchantName,
             List<TrustEvidence> existingEvidence,
@@ -75,24 +79,108 @@ public class ClaudeMerchantTargetedResearchProvider
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        MerchantTargetedResearchDecision decision =
-                deserialize(
-                        responseText
-                );
+        } catch (RuntimeException e) {
 
-        return new MerchantTargetedResearchDecision(
-                decision.findings()
-                        .stream()
-                        .limit(3)
-                        .toList()
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude targeted merchant research invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            MerchantTargetedResearchDecision decision =
+                    deserialize(
+                            responseText
+                    );
+
+            MerchantTargetedResearchDecision limitedDecision =
+                    new MerchantTargetedResearchDecision(
+                            decision.findings()
+                                    .stream()
+                                    .limit(3)
+                                    .toList()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    limitedDecision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude targeted merchant research violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private String buildPrompt(

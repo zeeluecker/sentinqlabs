@@ -5,11 +5,14 @@ import com.google.genai.types.GenerateContentResponse;
 import com.sentinq.ai.InterpretedShoppingGoal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextFinding;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
-import com.sentinq.trust.interpretation.EvidenceInterpretationProvider;
 import org.springframework.stereotype.Component;
 import com.google.genai.types.GenerateContentConfig;
 import com.google.genai.types.GoogleSearch;
@@ -36,7 +39,6 @@ import com.sentinq.shopping.TrustAssessedCandidate;
 public class GeminiProvider
         implements LlmProvider,
         ProductSearchProvider,
-        EvidenceInterpretationProvider,
         GoalFitReasoningProvider,
         RecommendationReasoningProvider{
 
@@ -72,27 +74,261 @@ public class GeminiProvider
      * shopping-goal representation.
      */
     @Override
-    public InterpretedShoppingGoal interpretShoppingGoal(
+    public LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
             String rawGoalText
     ) {
         validateGoalText(
                 rawGoalText
         );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(MODEL,
-                        buildPrompt(
-                                rawGoalText
-                        ),
-                        null
-                );
+        GenerateContentResponse response;
 
-        String responseText =
-                response.text();
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            MODEL,
+                            buildPrompt(
+                                    rawGoalText
+                            ),
+                            null
+                    );
 
-        return deserializeInterpretation(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini goal interpretation invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
         );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            String responseText =
+                    response.text();
+
+            InterpretedShoppingGoal interpretedShoppingGoal =
+                    deserializeInterpretation(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    interpretedShoppingGoal,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini goal interpretation violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+    }
+
+
+    /**
+     * Searches for current merchant offers using Gemini with
+     * Google Search grounding.
+     * <p>
+     * The provider returns normalized product-search data so the
+     * rest of Sentinq remains independent of Gemini-specific
+     * grounding behavior.
+     */
+    @Override
+    public LlmResult<ProductSearchResult> searchProducts(
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        validateSearchInputs(
+                goal,
+                preferences
+        );
+
+        Tool googleSearchTool =
+                Tool.builder()
+                        .googleSearch(
+                                GoogleSearch.builder()
+                                        .build()
+                        )
+                        .build();
+
+        GenerateContentConfig config =
+                GenerateContentConfig.builder()
+                        .tools(
+                                List.of(
+                                        googleSearchTool
+                                )
+                        )
+                        .build();
+
+        GenerateContentResponse response;
+
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            MODEL,
+                            buildProductSearchPrompt(
+                                    goal,
+                                    preferences
+                            ),
+                            config
+                    );
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini product search invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
+        );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            String responseText =
+                    response.text();
+
+            ProductSearchResult productSearchResult =
+                    deserializeSearchResult(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    productSearchResult,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini product search violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+
     }
 
     /**
@@ -123,33 +359,7 @@ public class GeminiProvider
         }
     }
 
-    @Override
-    public EvidenceInterpretationDecision interpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context
-    ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
-        );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        buildEvidenceInterpretationPrompt(
-                                evidence,
-                                context
-                        ),
-                        null
-                );
-
-        String responseText =
-                response.text();
-
-        return deserializeEvidenceInterpretation(
-                responseText
-        );
-    }
 
     private EvidenceInterpretationDecision deserializeEvidenceInterpretation(
             String responseText
@@ -333,34 +543,6 @@ public class GeminiProvider
         );
     }
 
-    @Override
-    public EvidenceInterpretationDecision reinterpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context,
-            List<TrustEvidence> researchedEvidence,
-            List<ContextFinding> contextFindings
-    ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
-        );
-
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        buildEvidenceReinterpretationPrompt(
-                                evidence,
-                                context,
-                                researchedEvidence,
-                                contextFindings
-                        ),
-                        null
-                );
-
-        return deserializeEvidenceInterpretation(
-                response.text()
-        );
-    }
 
     private void validateEvidenceInterpretationInputs(
             TrustEvidence evidence,
@@ -674,58 +856,7 @@ public class GeminiProvider
         }
     }
 
-    /**
-     * Searches for current merchant offers using Gemini with
-     * Google Search grounding.
-     *
-     * The provider returns normalized product-search data so the
-     * rest of Sentinq remains independent of Gemini-specific
-     * grounding behavior.
-     */
-    @Override
-    public ProductSearchResult searchProducts(
-            Goal goal,
-            ConsumerPreferences preferences
-    ) {
-        validateSearchInputs(
-                goal,
-                preferences
-        );
 
-        Tool googleSearchTool =
-                Tool.builder()
-                        .googleSearch(
-                                GoogleSearch.builder()
-                                        .build()
-                        )
-                        .build();
-
-        GenerateContentConfig config =
-                GenerateContentConfig.builder()
-                        .tools(
-                                List.of(
-                                        googleSearchTool
-                                )
-                        )
-                        .build();
-
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        buildProductSearchPrompt(
-                                goal,
-                                preferences
-                        ),
-                        config
-                );
-
-        String responseText =
-                response.text();
-
-        return deserializeSearchResult(
-                responseText
-        );
-    }
 
     /**
      * Builds the product-discovery prompt sent to Gemini.
@@ -851,7 +982,7 @@ public class GeminiProvider
     }
 
     @Override
-    public GoalFitReasoningDecision rank(
+    public LlmResult<GoalFitReasoningDecision> rank(
             Goal goal,
             List<CandidateOffer> candidates
     ) {
@@ -860,19 +991,108 @@ public class GeminiProvider
                 candidates
         );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        buildGoalFitPrompt(
-                                goal,
-                                candidates
-                        ),
-                        null
-                );
+        GenerateContentResponse response;
 
-        return deserializeGoalFitDecision(
-                response.text()
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            MODEL,
+                            buildGoalFitPrompt(
+                                    goal,
+                                    candidates
+                            ),
+                            null
+                    );
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini goal-fit reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
         );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            GoalFitReasoningDecision decision =
+                    deserializeGoalFitDecision(
+                            response.text()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini goal-fit reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private GoalFitReasoningDecision deserializeGoalFitDecision(
@@ -1084,7 +1304,7 @@ public class GeminiProvider
     }
 
     @Override
-    public RecommendationReasoningDecision recommend(
+    public LlmResult<RecommendationReasoningDecision> recommend(
             Goal goal,
             List<TrustAssessedCandidate> candidates
     ) {
@@ -1093,19 +1313,108 @@ public class GeminiProvider
                 candidates
         );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        buildRecommendationPrompt(
-                                goal,
-                                candidates
-                        ),
-                        null
-                );
+        GenerateContentResponse response;
 
-        return deserializeRecommendationDecision(
-                response.text()
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            MODEL,
+                            buildRecommendationPrompt(
+                                    goal,
+                                    candidates
+                            ),
+                            null
+                    );
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini recommendation reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
         );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            RecommendationReasoningDecision decision =
+                    deserializeRecommendationDecision(
+                            response.text()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini recommendation reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private RecommendationReasoningDecision deserializeRecommendationDecision(

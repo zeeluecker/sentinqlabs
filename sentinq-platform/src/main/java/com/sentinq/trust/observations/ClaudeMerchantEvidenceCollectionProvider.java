@@ -8,6 +8,10 @@ import com.anthropic.models.messages.Model;
 import com.anthropic.models.messages.WebSearchTool20250305;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.TrustContext;
 import org.springframework.stereotype.Component;
@@ -40,7 +44,7 @@ public class ClaudeMerchantEvidenceCollectionProvider
     }
 
     @Override
-    public MerchantEvidenceCollectionDecision collectMerchantEvidence(
+    public LlmResult<MerchantEvidenceCollectionDecision> collectMerchantEvidence(
             String merchantId,
             String merchantName,
             CandidateOffer offer,
@@ -73,36 +77,137 @@ public class ClaudeMerchantEvidenceCollectionProvider
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
+
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence collection invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
 
         System.out.println(
                 "Claude observation stop reason: "
                         + response.stopReason()
         );
 
-        String responseText =
-                extractText(response);
-        System.out.println(
-                "Claude merchant evidence response received. blocks="
-                        + response.content().size()
-        );
-
-        System.out.println(
-                "Claude merchant evidence extracted text length="
-                        + responseText.length()
-        );
-        System.out.println(
-                "Claude merchant evidence text prefix: "
-                        + responseText.substring(0, Math.min(500, responseText.length()))
-        );
         try {
-            return deserialize(
-                    responseText
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            System.out.println(
+                    "Claude merchant evidence response received. blocks="
+                            + response.content().size()
             );
+
+            System.out.println(
+                    "Claude merchant evidence extracted text length="
+                            + responseText.length()
+            );
+
+            System.out.println(
+                    "Claude merchant evidence text prefix: "
+                            + responseText.substring(
+                            0,
+                            Math.min(
+                                    500,
+                                    responseText.length()
+                            )
+                    )
+            );
+
+            MerchantEvidenceCollectionDecision decision =
+                    deserialize(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
         } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence collection violated the expected contract.",
+                    e,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence collection violated the expected contract.",
+                    e,
+                    trace
+            );
         }
     }
 

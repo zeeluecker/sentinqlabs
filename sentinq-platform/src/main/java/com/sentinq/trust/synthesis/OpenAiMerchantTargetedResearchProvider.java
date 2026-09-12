@@ -6,6 +6,10 @@ import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.openai.models.responses.WebSearchTool;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Component;
@@ -31,7 +35,7 @@ public class OpenAiMerchantTargetedResearchProvider
     }
 
     @Override
-    public MerchantTargetedResearchDecision research(
+    public LlmResult<MerchantTargetedResearchDecision> research(
             String merchantId,
             String merchantName,
             List<TrustEvidence> existingEvidence,
@@ -70,35 +74,116 @@ public class OpenAiMerchantTargetedResearchProvider
                         )
                         .build();
 
-        StructuredResponse<MerchantTargetedResearchDecision> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<MerchantTargetedResearchDecision> response;
 
-        MerchantTargetedResearchDecision decision =
-                response.output()
-                        .stream()
-                        .flatMap(outputItem ->
-                                outputItem.message().stream()
-                        )
-                        .flatMap(message ->
-                                message.content().stream()
-                        )
-                        .flatMap(content ->
-                                content.outputText().stream()
-                        )
-                        .findFirst()
-                        .orElseThrow(() ->
-                                new IllegalStateException(
-                                        "OpenAI returned no structured targeted research decision."
-                                )
-                        );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
 
-        return new MerchantTargetedResearchDecision(
-                decision.findings()
-                        .stream()
-                        .limit(3)
-                        .toList()
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI targeted merchant research invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            MerchantTargetedResearchDecision decision =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured targeted research decision."
+                                    )
+                            );
+
+            MerchantTargetedResearchDecision limitedDecision =
+                    new MerchantTargetedResearchDecision(
+                            decision.findings()
+                                    .stream()
+                                    .limit(3)
+                                    .toList()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    limitedDecision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI targeted merchant research violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private void validateInputs(

@@ -1,5 +1,6 @@
 package com.sentinq.trust.research;
 
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextRequirement;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
@@ -19,7 +20,7 @@ public class ContextResearchService {
                 providerRegistry;
     }
 
-    public ContextResearchDecision research(
+    public LlmResult<ContextResearchDecision> research(
             String provider,
             String merchantId,
             String merchantName,

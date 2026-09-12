@@ -1,5 +1,6 @@
 package com.sentinq.trust.interpretation;
 
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextFinding;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
@@ -17,7 +18,7 @@ public interface EvidenceInterpretationProvider {
     /**
      * Performs the initial interpretation of raw evidence.
      */
-    EvidenceInterpretationDecision interpretEvidence(
+    LlmResult <EvidenceInterpretationDecision> interpretEvidence(
             TrustEvidence evidence,
             TrustContext context
     );

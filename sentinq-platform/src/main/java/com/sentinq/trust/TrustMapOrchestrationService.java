@@ -1,5 +1,6 @@
 package com.sentinq.trust;
 
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.interpretation.EvidenceInterpretationService;
 import com.sentinq.trust.observations.MerchantEvidenceCollectionService;
@@ -97,7 +98,7 @@ public class TrustMapOrchestrationService {
      * loop for one evidence item.
      *
      * assessMerchant() no longer uses it.
-     */
+     *
     public TrustEvidenceAssessment assessEvidence(
             String provider,
             String merchantId,
@@ -190,7 +191,7 @@ public class TrustMapOrchestrationService {
                 ),
                 researchRounds
         );
-    }
+    }*/
 
     private boolean requiresMoreContext(
             EvidenceInterpretation interpretation,
@@ -423,11 +424,13 @@ public class TrustMapOrchestrationService {
                         + observedEvidence.size()
         );
 
+        int initialMaterialQuestionCount =
+                initialSynthesis.materialQuestions() == null
+                        ? 0
+                        : initialSynthesis.materialQuestions().size();
         System.out.println(
                 "Initial material questions: "
-                        + initialSynthesis
-                        .materialQuestions()
-                        .size()
+                        + initialMaterialQuestionCount
         );
 
         System.out.println(

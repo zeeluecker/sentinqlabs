@@ -1,5 +1,7 @@
 package com.sentinq.trust.observations;
 
+import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
@@ -12,16 +14,20 @@ public class MerchantEvidenceCollectionService {
 
     private final MerchantEvidenceCollectionProviderRegistry providerRegistry;
     private final MerchantEvidenceFactory evidenceFactory;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public MerchantEvidenceCollectionService(
             MerchantEvidenceCollectionProviderRegistry providerRegistry,
-            MerchantEvidenceFactory evidenceFactory
+            MerchantEvidenceFactory evidenceFactory,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry =
                 providerRegistry;
 
         this.evidenceFactory =
                 evidenceFactory;
+
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public List<TrustEvidence> collectEvidence(
@@ -45,11 +51,14 @@ public class MerchantEvidenceCollectionService {
                 );
 
         MerchantEvidenceCollectionDecision decision =
-                provider.collectMerchantEvidence(
-                        merchantId,
-                        merchantName,
-                        offer,
-                        context
+                llmInvocationObserver.execute(
+                        () ->
+                                provider.collectMerchantEvidence(
+                                        merchantId,
+                                        merchantName,
+                                        offer,
+                                        context
+                                )
                 );
 
         if (decision == null ||

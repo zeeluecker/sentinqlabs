@@ -1,5 +1,6 @@
 package com.sentinq.trust.synthesis;
 
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 
@@ -9,7 +10,7 @@ public interface MerchantEvidenceSynthesisProvider {
 
     String providerId();
 
-    MerchantEvidenceSynthesis synthesizeEvidence(
+    LlmResult<MerchantEvidenceSynthesis> synthesizeEvidence(
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,

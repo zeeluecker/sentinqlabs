@@ -1,5 +1,6 @@
 package com.sentinq.shopping;
 
+import com.sentinq.evaluation.LlmInvocationObserver;
 import com.sentinq.goal.Goal;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.GoalFitCandidate;
@@ -12,11 +13,14 @@ public class GoalFitReasoningService {
 
     private final GoalFitReasoningProviderRegistry
             providerRegistry;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public GoalFitReasoningService(
-            GoalFitReasoningProviderRegistry providerRegistry
+            GoalFitReasoningProviderRegistry providerRegistry,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry = providerRegistry;
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public List<GoalFitCandidate> rank(
@@ -33,9 +37,12 @@ public class GoalFitReasoningService {
                 providerRegistry.getProvider(provider);
 
         GoalFitReasoningDecision decision =
-                reasoningProvider.rank(
-                        goal,
-                        candidates
+                llmInvocationObserver.execute(
+                        () ->
+                                reasoningProvider.rank(
+                                        goal,
+                                        candidates
+                                )
                 );
 
         return decision.candidates()

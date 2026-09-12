@@ -1,6 +1,9 @@
 package com.sentinq.shopping;
 
 import com.sentinq.ai.*;
+import com.sentinq.evaluation.CapabilityTrace;
+import com.sentinq.evaluation.CapabilityTraceWriter;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.goal.*;
 import com.sentinq.identity.*;
 import com.sentinq.identity.PrincipalService;
@@ -15,12 +18,11 @@ import com.sentinq.audit.AuditService;
 import com.sentinq.audit.ExecutionTrace;
 
 import java.math.BigDecimal;
-import java.util.Map;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
 import java.time.LocalDate;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,6 +46,7 @@ public class ShoppingOrchestrationService {
     private final RecommendationReasoningService
             recommendationReasoningService;
     private ExecutionFactsResolver executionFactsResolver;
+    private final CapabilityTraceWriter capabilityTraceWriter;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -62,7 +65,8 @@ public class ShoppingOrchestrationService {
             GoalFitReasoningService goalFitReasoningService,
             RecommendationReasoningService
                     recommendationReasoningService,
-            ExecutionFactsResolver executionFactsResolver
+            ExecutionFactsResolver executionFactsResolver,
+            CapabilityTraceWriter capabilityTraceWriter
 
     ) {
         this.mandateBuilder = mandateBuilder;
@@ -80,6 +84,7 @@ public class ShoppingOrchestrationService {
         this.goalFitReasoningService = goalFitReasoningService;
         this.recommendationReasoningService = recommendationReasoningService;
         this.executionFactsResolver = executionFactsResolver;
+        this.capabilityTraceWriter = capabilityTraceWriter;
     }
 
     public ShoppingOrchestrationResult orchestrate(
@@ -165,6 +170,7 @@ public class ShoppingOrchestrationService {
                         agent.getProvider(),
                         request.goalText()
                 );
+        //interpretation.
         auditService.recordEvent(
                 trace.getTraceId(),
                 AuditEventType.GOAL_INTERPRETED,
@@ -224,12 +230,18 @@ public class ShoppingOrchestrationService {
                         "mandate", mandate
                 )
         );
+
+
         ProductSearchResult searchResult =
                 productSearchService.search(
                         agent.getProvider(),
                         goal,
                         preferences
                 );
+
+        Instant productSearchCompletedAt =
+                Instant.now();
+
 
         auditService.recordEvent(
                 trace.getTraceId(),

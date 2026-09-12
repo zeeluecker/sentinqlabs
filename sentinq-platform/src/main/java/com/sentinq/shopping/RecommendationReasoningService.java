@@ -1,5 +1,6 @@
 package com.sentinq.shopping;
 
+import com.sentinq.evaluation.LlmInvocationObserver;
 import com.sentinq.goal.Goal;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.GoalFitCandidate;
@@ -12,11 +13,14 @@ public class RecommendationReasoningService {
 
     private final RecommendationReasoningProviderRegistry
             providerRegistry;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public RecommendationReasoningService(
-            RecommendationReasoningProviderRegistry providerRegistry
+            RecommendationReasoningProviderRegistry providerRegistry,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry = providerRegistry;
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public RecommendationDecision recommend(
@@ -41,9 +45,12 @@ public class RecommendationReasoningService {
                 providerRegistry.getProvider(provider);
 
         RecommendationReasoningDecision decision =
-                reasoningProvider.recommend(
-                        goal,
-                        candidates
+                llmInvocationObserver.execute(
+                        () ->
+                                reasoningProvider.recommend(
+                                        goal,
+                                        candidates
+                                )
                 );
 
         CandidateOffer selectedCandidate =

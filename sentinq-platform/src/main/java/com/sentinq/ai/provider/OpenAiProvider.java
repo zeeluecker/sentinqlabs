@@ -7,12 +7,14 @@ import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
 import com.sentinq.ai.InterpretedShoppingGoal;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.shopping.*;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
-import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
-import com.sentinq.trust.interpretation.EvidenceInterpretationProvider;
 import com.sentinq.trust.observations.MerchantEvidenceCollectionProvider;
 import org.springframework.stereotype.Component;
 import com.openai.models.responses.WebSearchTool;
@@ -24,15 +26,14 @@ import com.sentinq.trust.research.ContextResearchDecision;
 import com.sentinq.trust.research.ContextResearchProvider;
 import java.util.List;
 import com.sentinq.trust.ContextFinding;
-import java.util.List;
+
 import com.sentinq.trust.observations.MerchantEvidenceCollectionDecision;
-import com.sentinq.trust.observations.MerchantEvidenceCollectionProvider;
+
 
 @Component
 public class OpenAiProvider
         implements LlmProvider,
         ProductSearchProvider,
-        EvidenceInterpretationProvider,
         ContextResearchProvider,
         MerchantEvidenceCollectionProvider,
         GoalFitReasoningProvider,
@@ -56,7 +57,7 @@ public class OpenAiProvider
     }
 
     @Override
-    public InterpretedShoppingGoal interpretShoppingGoal(
+    public LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
             String rawGoalText
     ) {
         StructuredResponseCreateParams<InterpretedShoppingGoal> params =
@@ -66,152 +67,247 @@ public class OpenAiProvider
                         .text(InterpretedShoppingGoal.class)
                         .build();
 
-        StructuredResponse<InterpretedShoppingGoal> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<InterpretedShoppingGoal> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured goal interpretation."
-                        )
-                );
-    }
-    /**
-     * Interprets a piece of raw trust evidence within the consumer's
-     * current shopping context.
-     *
-     * This operation performs interpretation only. It does not search
-     * for additional evidence or resolve missing context. When the
-     * evidence cannot support a trustworthy conclusion on its own,
-     * the provider should return CONTEXT_REQUIRED and identify the
-     * context that Sentinq should research next.
-     */
-    @Override
-    public EvidenceInterpretationDecision interpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context
-    ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
-        );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
 
-        StructuredResponseCreateParams<EvidenceInterpretationDecision> params =
-                ResponseCreateParams.builder()
-                        .model(MODEL)
-                        .input(
-                                buildEvidenceInterpretationPrompt(
-                                        evidence,
-                                        context
-                                )
-                        )
-                        .text(
-                                EvidenceInterpretationDecision.class
-                        )
-                        .build();
+        } catch (RuntimeException e) {
 
-        StructuredResponse<EvidenceInterpretationDecision> response =
-                openAIClient.responses()
-                        .create(params);
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured evidence interpretation."
-                        )
-                );
-    }
+            trace.setModel(
+                    MODEL.toString()
+            );
 
-    @Override
-    public EvidenceInterpretationDecision reinterpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context,
-            List<TrustEvidence> researchedEvidence,
-            List<ContextFinding> contextFindings
-    ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
-        );
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
 
-        if (researchedEvidence == null ||
-                researchedEvidence.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Researched evidence is required for reinterpretation."
+            throw new LlmInvocationException(
+                    "OpenAI goal interpretation invocation failed.",
+                    e,
+                    trace
             );
         }
 
-        if (contextFindings == null ||
-                contextFindings.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Context findings are required for reinterpretation."
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            InterpretedShoppingGoal interpretedShoppingGoal =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured goal interpretation."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    interpretedShoppingGoal,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI goal interpretation violated the expected contract.",
+                    e,
+                    trace
             );
         }
+    }
 
-        StructuredResponseCreateParams<EvidenceInterpretationDecision> params =
+
+    @Override
+    public LlmResult<ProductSearchResult> searchProducts(
+            Goal goal,
+            ConsumerPreferences preferences
+    ) {
+        validateSearchInputs(
+                goal,
+                preferences
+        );
+
+        StructuredResponseCreateParams<ProductSearchResult> params =
                 ResponseCreateParams.builder()
                         .model(MODEL)
                         .input(
-                                buildEvidenceReinterpretationPrompt(
-                                        evidence,
-                                        context,
-                                        researchedEvidence,
-                                        contextFindings
+                                buildProductSearchPrompt(
+                                        goal,
+                                        preferences
                                 )
                         )
-                        .text(
-                                EvidenceInterpretationDecision.class
+                        .addTool(
+                                WebSearchTool.builder()
+                                        .type(
+                                                WebSearchTool.Type.WEB_SEARCH
+                                        )
+                                        .build()
                         )
+                        .text(ProductSearchResult.class)
                         .build();
 
-        StructuredResponse<EvidenceInterpretationDecision> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<ProductSearchResult> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured evidence reinterpretation."
-                        )
-                );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI product search invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            ProductSearchResult productSearchResult =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no product-search results."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    productSearchResult,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI product search violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
+
     @Override
-    public MerchantEvidenceCollectionDecision collectMerchantEvidence(
+    public LlmResult<MerchantEvidenceCollectionDecision> collectMerchantEvidence(
             String merchantId,
             String merchantName,
             CandidateOffer offer,
@@ -240,31 +336,112 @@ public class OpenAiProvider
                         )
                         .build();
 
-        StructuredResponse<MerchantEvidenceCollectionDecision> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<MerchantEvidenceCollectionDecision> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured merchant evidence collection."
-                        )
-                );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    EVIDENCE_OBSERVATION_MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence collection invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            MerchantEvidenceCollectionDecision decision =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured merchant evidence collection."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence collection violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     @Override
-    public GoalFitReasoningDecision rank(
+    public LlmResult<GoalFitReasoningDecision> rank(
             Goal goal,
             List<CandidateOffer> candidates
     ) {
@@ -287,27 +464,108 @@ public class OpenAiProvider
                         )
                         .build();
 
-        StructuredResponse<GoalFitReasoningDecision> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<GoalFitReasoningDecision> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured goal-fit reasoning."
-                        )
-                );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI goal-fit reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            GoalFitReasoningDecision decision =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured goal-fit reasoning."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI goal-fit reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private String buildGoalFitPrompt(
@@ -710,7 +968,7 @@ public class OpenAiProvider
     }
 
     @Override
-    public ContextResearchDecision researchContext(
+    public LlmResult<ContextResearchDecision> researchContext(
             String merchantId,
             String merchantName,
             TrustEvidence originalEvidence,
@@ -751,23 +1009,63 @@ public class OpenAiProvider
                 openAIClient.responses()
                         .create(params);
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured context research."
+        ContextResearchDecision decision =
+                response.output()
+                        .stream()
+                        .flatMap(outputItem ->
+                                outputItem.message().stream()
                         )
-                );
+                        .flatMap(message ->
+                                message.content().stream()
+                        )
+                        .flatMap(content ->
+                                content.outputText().stream()
+                        )
+                        .findFirst()
+                        .orElseThrow(() ->
+                                new IllegalStateException(
+                                        "OpenAI returned no structured context research."
+                                )
+                        );
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        return new LlmResult<>(
+                decision,
+                trace
+        );
     }
 
     private String buildContextResearchPrompt(
@@ -1127,57 +1425,6 @@ public class OpenAiProvider
         }
     }
 
-    @Override
-    public ProductSearchResult searchProducts(
-            Goal goal,
-            ConsumerPreferences preferences
-    ) {
-        validateSearchInputs(
-                goal,
-                preferences
-        );
-
-        StructuredResponseCreateParams<ProductSearchResult> params =
-                ResponseCreateParams.builder()
-                        .model(MODEL)
-                        .input(
-                                buildProductSearchPrompt(
-                                        goal,
-                                        preferences
-                                )
-                        )
-                        .addTool(
-                                WebSearchTool.builder()
-                                        .type(
-                                                WebSearchTool.Type.WEB_SEARCH
-                                        )
-                                        .build()
-                        )
-                        .text(ProductSearchResult.class)
-                        .build();
-
-        StructuredResponse<ProductSearchResult> response =
-                openAIClient.responses()
-                        .create(params);
-
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no product-search results."
-                        )
-                );
-    }
 
     private String buildProductSearchPrompt(
             Goal goal,
@@ -1280,7 +1527,7 @@ public class OpenAiProvider
     }
 
     @Override
-    public RecommendationReasoningDecision recommend(
+    public LlmResult<RecommendationReasoningDecision> recommend(
             Goal goal,
             List<TrustAssessedCandidate> candidates
     ) {
@@ -1293,30 +1540,113 @@ public class OpenAiProvider
                                         candidates
                                 )
                         )
-                        .text(RecommendationReasoningDecision.class)
+                        .text(
+                                RecommendationReasoningDecision.class
+                        )
                         .build();
 
-        StructuredResponse<RecommendationReasoningDecision> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<RecommendationReasoningDecision> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured recommendation decision."
-                        )
-                );
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI recommendation reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            RecommendationReasoningDecision decision =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured recommendation decision."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI recommendation reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private String buildRecommendationPrompt(
@@ -1381,12 +1711,12 @@ public class OpenAiProvider
                 consent, spending authority, or whether the agent is
                 authorized to complete the transaction.
 
-                11. selectedOfferId must exactly match the offerId of one
+            11. selectedOfferId must exactly match the offerId of one
                     of the supplied candidates.
                 
-                12. Do not create, modify, reconstruct, or substitute an offer.
+            12. Do not create, modify, reconstruct, or substitute an offer.
                 
-                13. reasoning should explain the important tradeoff that led
+            13. reasoning should explain the important tradeoff that led
                     to the selection, including why the selected candidate is
                     preferable to the strongest alternatives.
 

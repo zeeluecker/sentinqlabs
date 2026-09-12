@@ -2,17 +2,22 @@ package com.sentinq.ai;
 
 import com.sentinq.ai.provider.LlmProvider;
 import com.sentinq.ai.provider.LlmProviderRegistry;
+import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.LlmResult;
 import org.springframework.stereotype.Service;
 
 @Service
 public class GoalInterpretationService {
 
     private final LlmProviderRegistry providerRegistry;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public GoalInterpretationService(
-            LlmProviderRegistry providerRegistry
+            LlmProviderRegistry providerRegistry,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry = providerRegistry;
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public InterpretedShoppingGoal interpret(
@@ -26,8 +31,11 @@ public class GoalInterpretationService {
                         provider
                 );
 
-        return llmprovider.interpretShoppingGoal(
-                rawGoalText
+        return llmInvocationObserver.execute(
+                () ->
+                        llmprovider.interpretShoppingGoal(
+                                rawGoalText
+                        )
         );
     }
 

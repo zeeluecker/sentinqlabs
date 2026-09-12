@@ -1,5 +1,6 @@
 package com.sentinq.trust.interpretation;
 
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextFinding;
 import com.sentinq.trust.EvidenceInterpretation;
 import com.sentinq.trust.TrustContext;
@@ -37,7 +38,7 @@ public class EvidenceInterpretationService {
      * a structured interpretation decision which Sentinq records
      * separately as an EvidenceInterpretation.
      */
-    public EvidenceInterpretation interpret(
+    public LlmResult<EvidenceInterpretation> interpret(
             String provider,
             TrustEvidence evidence,
             TrustContext context
@@ -53,17 +54,24 @@ public class EvidenceInterpretationService {
                         provider
                 );
 
-        EvidenceInterpretationDecision decision =
+        LlmResult<EvidenceInterpretationDecision> decisionResult =
                 interpretationProvider.interpretEvidence(
                         evidence,
                         context
                 );
 
-        return createInterpretation(
-                evidence,
-                decision,
-                List.of()
+        EvidenceInterpretation interpretation =
+                createInterpretation(
+                        evidence,
+                        decisionResult.getResult(),
+                        List.of()
+                );
+
+        return new LlmResult<>(
+                interpretation,
+                decisionResult.getTrace()
         );
+
     }
 
     /**

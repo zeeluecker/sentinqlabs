@@ -4,6 +4,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import com.google.genai.types.GenerateContentResponse;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.ContextType;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustDimension;
@@ -47,7 +51,7 @@ public class GeminiMerchantEvidenceSynthesisProvider
     }
 
     @Override
-    public MerchantEvidenceSynthesis synthesizeEvidence(
+    public LlmResult<MerchantEvidenceSynthesis> synthesizeEvidence(
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
@@ -73,16 +77,105 @@ public class GeminiMerchantEvidenceSynthesisProvider
                         + prompt.length()
         );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        prompt,
-                        null
-                );
+        GenerateContentResponse response;
 
-        return deserializeSynthesis(
-                response.text()
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            MODEL,
+                            prompt,
+                            null
+                    );
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini merchant evidence synthesis invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
         );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            MerchantEvidenceSynthesis synthesis =
+                    deserializeSynthesis(
+                            response.text()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini merchant evidence synthesis violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     @Override

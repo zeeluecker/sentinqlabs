@@ -2,6 +2,7 @@ package com.sentinq.ai;
 
 import com.sentinq.ai.provider.ProductSearchProvider;
 import com.sentinq.ai.provider.ProductSearchProviderRegistry;
+import com.sentinq.evaluation.LlmInvocationObserver;
 import com.sentinq.goal.Goal;
 import com.sentinq.preference.ConsumerPreferences;
 import org.springframework.stereotype.Service;
@@ -10,11 +11,14 @@ import org.springframework.stereotype.Service;
 public class ProductSearchService {
 
     private final ProductSearchProviderRegistry providerRegistry;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public ProductSearchService(
-            ProductSearchProviderRegistry providerRegistry
+            ProductSearchProviderRegistry providerRegistry,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry = providerRegistry;
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public ProductSearchResult search(
@@ -27,9 +31,12 @@ public class ProductSearchService {
                         providerId
                 );
 
-        return provider.searchProducts(
-                goal,
-                preferences
+        return llmInvocationObserver.execute(
+                () ->
+                        provider.searchProducts(
+                                goal,
+                                preferences
+                        )
         );
     }
 }

@@ -8,6 +8,10 @@ import com.anthropic.models.messages.Model;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sentinq.ai.InterpretedShoppingGoal;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.shopping.GoalFitReasoningProvider;
 import com.sentinq.trust.ContextFinding;
 import org.springframework.stereotype.Component;
@@ -18,10 +22,8 @@ import com.sentinq.preference.ConsumerPreferences;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
-import com.sentinq.trust.interpretation.EvidenceInterpretationProvider;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.shopping.GoalFitReasoningDecision;
-import com.sentinq.shopping.GoalFitReasoningProvider;
 import com.sentinq.shopping.RecommendationReasoningDecision;
 import com.sentinq.shopping.RecommendationReasoningProvider;
 import com.sentinq.shopping.TrustAssessedCandidate;
@@ -33,7 +35,6 @@ import java.util.List;
 public class ClaudeProvider
         implements LlmProvider,
         ProductSearchProvider,
-        EvidenceInterpretationProvider,
         GoalFitReasoningProvider,
         RecommendationReasoningProvider{
 
@@ -58,7 +59,7 @@ public class ClaudeProvider
     }
 
     @Override
-    public InterpretedShoppingGoal interpretShoppingGoal(
+    public LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
             String rawGoalText
     ) {
         validateGoalText(rawGoalText);
@@ -72,89 +73,233 @@ public class ClaudeProvider
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        return deserializeInterpretation(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal interpretation invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            InterpretedShoppingGoal interpretedShoppingGoal =
+                    deserializeInterpretation(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    interpretedShoppingGoal,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal interpretation violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
+
     @Override
-    public EvidenceInterpretationDecision interpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context
+    public LlmResult<ProductSearchResult> searchProducts(
+            Goal goal,
+            ConsumerPreferences preferences
     ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
+        validateSearchInputs(
+                goal,
+                preferences
         );
+
+        WebSearchTool20250305 webSearchTool =
+                WebSearchTool20250305.builder()
+                        .maxUses(5L)
+                        .build();
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
                         .model(MODEL)
                         .maxTokens(maxtokens)
+                        .addTool(webSearchTool)
                         .addUserMessage(
-                                buildEvidenceInterpretationPrompt(
-                                        evidence,
-                                        context
+                                buildProductSearchPrompt(
+                                        goal,
+                                        preferences
                                 )
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        return deserializeEvidenceInterpretation(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude product search invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        System.out.println(
+                "Claude stop reason: "
+                        + response.stopReason()
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            ProductSearchResult productSearchResult =
+                    deserializeSearchResult(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    productSearchResult,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude product search violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
-    @Override
-    public EvidenceInterpretationDecision reinterpretEvidence(
-            TrustEvidence evidence,
-            TrustContext context,
-            List<TrustEvidence> researchedEvidence,
-            List<ContextFinding> contextFindings
-    ) {
-        validateEvidenceInterpretationInputs(
-                evidence,
-                context
-        );
 
-        MessageCreateParams params =
-                MessageCreateParams.builder()
-                        .model(MODEL)
-                        .maxTokens(maxtokens)
-                        .addUserMessage(
-                                buildEvidenceReinterpretationPrompt(
-                                        evidence,
-                                        context,
-                                        researchedEvidence,
-                                        contextFindings
-                                )
-                        )
-                        .build();
-
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
-
-        String responseText =
-                extractText(response);
-
-        return deserializeEvidenceInterpretation(
-                responseText
-        );
-    }
 
     private EvidenceInterpretationDecision deserializeEvidenceInterpretation(
             String responseText
@@ -551,56 +696,6 @@ public class ClaudeProvider
     }
 
 
-    @Override
-    public ProductSearchResult searchProducts(
-            Goal goal,
-            ConsumerPreferences preferences
-    ) {
-        validateSearchInputs(
-                goal,
-                preferences
-        );
-
-        WebSearchTool20250305 webSearchTool =
-                WebSearchTool20250305.builder()
-                        .maxUses(5L)
-                        .build();
-
-        MessageCreateParams params =
-                MessageCreateParams.builder()
-                        .model(MODEL)
-                        .maxTokens(maxtokens)
-                        .addTool(webSearchTool)
-                        .addUserMessage(
-                                buildProductSearchPrompt(
-                                        goal,
-                                        preferences
-                                )
-                        )
-                        .build();
-
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
-
-        System.out.println(
-                "Claude stop reason: "
-                        + response.stopReason()
-        );
-
-       /* System.out.println(
-                "Claude response content: "
-                        + response.content()
-        );*/
-
-
-        String responseText =
-                extractText(response);
-
-        return deserializeSearchResult(
-                responseText
-        );
-    }
 
     private String buildProductSearchPrompt(
             Goal goal,
@@ -840,7 +935,7 @@ public class ClaudeProvider
     }
 
     @Override
-    public GoalFitReasoningDecision rank(
+    public LlmResult<GoalFitReasoningDecision> rank(
             Goal goal,
             List<CandidateOffer> candidates
     ) {
@@ -861,16 +956,100 @@ public class ClaudeProvider
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        return deserializeGoalFitDecision(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal-fit reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            GoalFitReasoningDecision decision =
+                    deserializeGoalFitDecision(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal-fit reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private GoalFitReasoningDecision deserializeGoalFitDecision(
@@ -1062,7 +1241,7 @@ public class ClaudeProvider
     }
 
     @Override
-    public RecommendationReasoningDecision recommend(
+    public LlmResult<RecommendationReasoningDecision> recommend(
             Goal goal,
             List<TrustAssessedCandidate> candidates
     ) {
@@ -1083,16 +1262,100 @@ public class ClaudeProvider
                         )
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        return deserializeRecommendationDecision(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude recommendation reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            RecommendationReasoningDecision decision =
+                    deserializeRecommendationDecision(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude recommendation reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private RecommendationReasoningDecision deserializeRecommendationDecision(

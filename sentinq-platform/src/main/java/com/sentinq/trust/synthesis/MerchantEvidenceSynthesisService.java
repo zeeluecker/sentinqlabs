@@ -1,5 +1,7 @@
 package com.sentinq.trust.synthesis;
 
+import com.sentinq.evaluation.LlmInvocationObserver;
+
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Service;
@@ -10,11 +12,14 @@ import java.util.List;
 public class MerchantEvidenceSynthesisService {
 
     private final MerchantEvidenceSynthesisProviderRegistry providerRegistry;
+    private final LlmInvocationObserver llmInvocationObserver;
 
     public MerchantEvidenceSynthesisService(
-            MerchantEvidenceSynthesisProviderRegistry providerRegistry
+            MerchantEvidenceSynthesisProviderRegistry providerRegistry,
+            LlmInvocationObserver llmInvocationObserver
     ) {
         this.providerRegistry = providerRegistry;
+        this.llmInvocationObserver = llmInvocationObserver;
     }
 
     public MerchantEvidenceSynthesis synthesize(
@@ -29,11 +34,14 @@ public class MerchantEvidenceSynthesisService {
                         provider
                 );
 
-        return synthesisProvider.synthesizeEvidence(
-                merchantId,
-                merchantName,
-                evidence,
-                context
+        return llmInvocationObserver.execute(
+                () ->
+                        synthesisProvider.synthesizeEvidence(
+                                merchantId,
+                                merchantName,
+                                evidence,
+                                context
+                        )
         );
     }
 

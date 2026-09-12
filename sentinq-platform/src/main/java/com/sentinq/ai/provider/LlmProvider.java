@@ -1,15 +1,14 @@
 package com.sentinq.ai.provider;
 
 import com.sentinq.ai.InterpretedShoppingGoal;
-import com.sentinq.trust.TrustContext;
-import com.sentinq.trust.TrustEvidence;
-import com.sentinq.trust.interpretation.EvidenceInterpretationDecision;
+import com.sentinq.evaluation.LlmResult;
+
 
 public interface LlmProvider {
 
     String getProviderId();
 
-    InterpretedShoppingGoal interpretShoppingGoal(
+     LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
             String rawGoalText
     );
 

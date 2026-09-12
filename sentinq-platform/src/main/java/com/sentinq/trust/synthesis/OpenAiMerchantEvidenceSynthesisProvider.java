@@ -5,6 +5,10 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
+import com.sentinq.evaluation.LlmCapabilityTrace;
+import com.sentinq.evaluation.LlmInvocationException;
+import com.sentinq.evaluation.LlmInvocationOutcome;
+import com.sentinq.evaluation.LlmResult;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Component;
@@ -31,7 +35,7 @@ public class OpenAiMerchantEvidenceSynthesisProvider
     }
 
     @Override
-    public MerchantEvidenceSynthesis synthesizeEvidence(
+    public LlmResult<MerchantEvidenceSynthesis> synthesizeEvidence(
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
@@ -66,27 +70,111 @@ public class OpenAiMerchantEvidenceSynthesisProvider
                         )
                         .build();
 
-        StructuredResponse<MerchantEvidenceSynthesis> response =
-                openAIClient.responses()
-                        .create(params);
+        StructuredResponse<MerchantEvidenceSynthesis> response;
 
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured merchant evidence synthesis."
-                        )
-                );
+        try {
+            // TODO:
+            // Detect provider-reported output truncation before classifying
+            // structured-output failures as CONTRACT_VIOLATION.
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    SYNTHESIS_MODEL.toString()
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence synthesis invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            MerchantEvidenceSynthesis synthesis =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured merchant evidence synthesis."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence synthesis violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private void validateInputs(
