@@ -2,6 +2,7 @@ package com.sentinq.trust.synthesis;
 
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
+import com.openai.models.ChatModel;
 import com.openai.models.responses.ResponseCreateParams;
 import com.openai.models.responses.StructuredResponse;
 import com.openai.models.responses.StructuredResponseCreateParams;
@@ -19,8 +20,6 @@ import java.util.List;
 public class OpenAiMerchantEvidenceSynthesisProvider
         implements MerchantEvidenceSynthesisProvider {
 
-    private static final String SYNTHESIS_MODEL = "gpt-5";
-    private static final String REFINEMENT_MODEL = "gpt-5.4-mini";
 
     private final OpenAIClient openAIClient;
 
@@ -39,7 +38,8 @@ public class OpenAiMerchantEvidenceSynthesisProvider
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateInputs(
                 merchantId,
@@ -63,7 +63,7 @@ public class OpenAiMerchantEvidenceSynthesisProvider
 
         StructuredResponseCreateParams<MerchantEvidenceSynthesis> params =
                 ResponseCreateParams.builder()
-                        .model(SYNTHESIS_MODEL)
+                        .model(model)
                         .input(prompt)
                         .text(
                                 MerchantEvidenceSynthesis.class
@@ -85,9 +85,7 @@ public class OpenAiMerchantEvidenceSynthesisProvider
             LlmCapabilityTrace trace =
                     new LlmCapabilityTrace();
 
-            trace.setModel(
-                    SYNTHESIS_MODEL.toString()
-            );
+            trace.setModel(model);
 
             trace.setOutcome(
                     LlmInvocationOutcome.PROVIDER_ERROR
@@ -171,6 +169,152 @@ public class OpenAiMerchantEvidenceSynthesisProvider
 
             throw new LlmInvocationException(
                     "OpenAI merchant evidence synthesis violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+    }
+
+    @Override
+    public LlmResult<MerchantEvidenceSynthesis> refineSynthesis(
+            String merchantId,
+            String merchantName,
+            MerchantEvidenceSynthesis initialSynthesis,
+            List<TrustEvidence> researchedEvidence,
+            TrustContext context,
+            String model
+    ) {
+        if (initialSynthesis == null) {
+            throw new IllegalArgumentException(
+                    "Initial synthesis is required."
+            );
+        }
+
+        if (researchedEvidence == null) {
+            throw new IllegalArgumentException(
+                    "Researched evidence is required."
+            );
+        }
+
+        String prompt =
+                buildRefinementPrompt(
+                        merchantId,
+                        merchantName,
+                        initialSynthesis,
+                        researchedEvidence,
+                        context
+                );
+
+        System.out.println(
+                "[Refinement] Prompt chars: "
+                        + prompt.length()
+        );
+
+        StructuredResponseCreateParams<MerchantEvidenceSynthesis> params =
+                ResponseCreateParams.builder()
+                        .model(model)
+                        .input(prompt)
+                        .text(
+                                MerchantEvidenceSynthesis.class
+                        )
+                        .build();
+
+        StructuredResponse<MerchantEvidenceSynthesis> response;
+
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(model);
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence refinement invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            MerchantEvidenceSynthesis synthesis =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured refined merchant synthesis."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI merchant evidence refinement violated the expected contract.",
                     e,
                     trace
             );
@@ -364,69 +508,7 @@ public class OpenAiMerchantEvidenceSynthesisProvider
         );
     }
 
-    @Override
-    public MerchantEvidenceSynthesis refineSynthesis(
-            String merchantId,
-            String merchantName,
-            MerchantEvidenceSynthesis initialSynthesis,
-            List<TrustEvidence> researchedEvidence,
-            TrustContext context
-    ) {
-        if (initialSynthesis == null) {
-            throw new IllegalArgumentException(
-                    "Initial synthesis is required."
-            );
-        }
 
-        if (researchedEvidence == null) {
-            throw new IllegalArgumentException(
-                    "Researched evidence is required."
-            );
-        }
-        String prompt =
-                buildRefinementPrompt(
-                        merchantId,
-                        merchantName,
-                        initialSynthesis,
-                        researchedEvidence,
-                        context
-                );
-
-        System.out.println(
-                "[Refinement] Prompt chars: "
-                        + prompt.length()
-        );
-
-        StructuredResponseCreateParams<MerchantEvidenceSynthesis> params =
-                ResponseCreateParams.builder()
-                        .model(REFINEMENT_MODEL)
-                        .input(prompt).text(
-                                MerchantEvidenceSynthesis.class
-                        )
-                        .build();
-
-        StructuredResponse<MerchantEvidenceSynthesis> response =
-                openAIClient.responses()
-                        .create(params);
-
-        return response.output()
-                .stream()
-                .flatMap(outputItem ->
-                        outputItem.message().stream()
-                )
-                .flatMap(message ->
-                        message.content().stream()
-                )
-                .flatMap(content ->
-                        content.outputText().stream()
-                )
-                .findFirst()
-                .orElseThrow(() ->
-                        new IllegalStateException(
-                                "OpenAI returned no structured refined merchant synthesis."
-                        )
-                );
-    }
 
     private String buildRefinementPrompt(
             String merchantId,

@@ -1,12 +1,13 @@
 package com.sentinq.shopping;
 
-import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.*;
 import com.sentinq.goal.Goal;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.GoalFitCandidate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class RecommendationReasoningService {
@@ -24,9 +25,10 @@ public class RecommendationReasoningService {
     }
 
     public RecommendationDecision recommend(
-            String provider,
+            UUID executionId,
             Goal goal,
-            List<TrustAssessedCandidate> candidates
+            List<TrustAssessedCandidate> candidates,
+            ModelAssignment assignment
     ) {
         if (goal == null) {
             throw new IllegalArgumentException(
@@ -42,14 +44,25 @@ public class RecommendationReasoningService {
         }
 
         RecommendationReasoningProvider reasoningProvider =
-                providerRegistry.getProvider(provider);
+                providerRegistry.getProvider(
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.RECOMMENDATION_REASONING
+                );
 
         RecommendationReasoningDecision decision =
                 llmInvocationObserver.execute(
+                        capabilityIdentity,
                         () ->
                                 reasoningProvider.recommend(
                                         goal,
-                                        candidates
+                                        candidates,
+                                        assignment.model()
                                 )
                 );
 
@@ -79,5 +92,4 @@ public class RecommendationReasoningService {
                 decision.reasoning()
         );
     }
-
 }

@@ -441,3 +441,234 @@
   font-size: 0.9rem;
   text-decoration: none;
 }
+
+/* =========================================================
+   Model Assignments
+   ========================================================= */
+
+.model-assignment-header {
+    margin-bottom: 28px;
+}
+
+.model-assignment-header strong {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #172033;
+}
+
+.model-assignment-header p {
+    margin: 0;
+    color: #667085;
+    line-height: 1.5;
+}
+
+
+.model-assignment-list {
+    overflow: hidden;
+    background: #ffffff;
+    border: 1px solid #e3e8f0;
+    border-radius: 18px;
+}
+
+
+.model-assignment-row {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) 390px;
+    gap: 20px;
+    align-items: center;
+
+    padding: 22px 24px;
+
+    border-bottom: 1px solid #e9edf3;
+}
+
+.model-assignment-row:last-child {
+    border-bottom: none;
+}
+
+
+.model-stage-number {
+    align-self: start;
+
+    padding-top: 2px;
+
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    color: #6256d9;
+}
+
+
+.model-stage-main {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.model-stage-main strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #172033;
+}
+
+.model-stage-main > span {
+    max-width: 680px;
+
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: #667085;
+}
+
+
+.model-assignment-controls {
+    display: grid;
+    grid-template-columns: 135px minmax(190px, 1fr);
+    gap: 10px;
+    align-items: center;
+}
+
+
+.model-provider-select,
+.model-model-select {
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+
+    padding: 0 12px;
+
+    background: #ffffff;
+    border: 1px solid #d7dce5;
+    border-radius: 9px;
+
+    font: inherit;
+    font-size: 0.9rem;
+    color: #172033;
+
+    cursor: pointer;
+}
+
+
+.model-provider-select:focus,
+.model-model-select:focus {
+    outline: none;
+    border-color: #6256d9;
+    box-shadow: 0 0 0 3px rgba(98, 86, 217, 0.12);
+}
+
+
+@media (max-width: 900px) {
+
+    .model-assignment-row {
+        grid-template-columns: 42px minmax(0, 1fr);
+    }
+
+    .model-assignment-controls {
+        grid-column: 2;
+        width: 100%;
+        max-width: 430px;
+    }
+}
+
+
+@media (max-width: 600px) {
+
+    .model-assignment-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 18px;
+    }
+
+    .model-stage-number,
+    .model-stage-main,
+    .model-assignment-controls {
+        grid-column: 1;
+    }
+
+    .model-assignment-controls {
+        grid-template-columns: 1fr;
+        max-width: none;
+    }
+}
+
+.candidate-product-image {
+    width: 100%;
+    height: 220px;
+    margin-bottom: 18px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #f5f5f5;
+}
+
+.candidate-product-image img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+}
+
+.recommendation-card {
+    padding: 24px;
+}
+
+.recommendation-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+}
+
+.recommendation-header h3 {
+    margin: 4px 0 6px;
+}
+
+.recommendation-meta {
+    margin: 0;
+    color: #64748b;
+}
+
+.recommendation-content {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+}
+
+.recommendation-image {
+    width: 280px;
+    height: 280px;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #f5f5f5;
+}
+
+.recommendation-image img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: contain;
+}
+
+.recommendation-reasoning {
+    min-width: 0;
+}
+
+.recommendation-reasoning .section-copy {
+    margin-top: 8px;
+    max-width: 900px;
+    line-height: 1.65;
+}
+
+@media (max-width: 800px) {
+    .recommendation-content {
+        grid-template-columns: 1fr;
+    }
+
+    .recommendation-image {
+        width: 100%;
+        height: 260px;
+    }
+}

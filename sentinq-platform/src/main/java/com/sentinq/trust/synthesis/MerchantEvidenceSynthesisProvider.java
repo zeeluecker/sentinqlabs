@@ -14,14 +14,16 @@ public interface MerchantEvidenceSynthesisProvider {
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
-            TrustContext context
+            TrustContext context,
+            String model
     );
 
-    MerchantEvidenceSynthesis refineSynthesis(
+    LlmResult<MerchantEvidenceSynthesis> refineSynthesis(
             String merchantId,
             String merchantName,
             MerchantEvidenceSynthesis initialSynthesis,
             List<TrustEvidence> researchedEvidence,
-            TrustContext context
+            TrustContext context,
+            String model
     );
 }

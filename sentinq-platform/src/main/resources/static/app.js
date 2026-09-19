@@ -61,17 +61,11 @@ const elements = {
   mandateList: document.getElementById("mandateList"),
   auditTimeline: document.getElementById("auditTimeline"),
   mandateResult: document.getElementById("mandateResult"),
+  recommendationResult: document.getElementById("recommendationResult"),
   selectedResult: document.getElementById("selectedResult"),
   trustMapResults: document.getElementById("trustMapResults"),
   candidateResults: document.getElementById("candidateResults")
-
 };
-
-const agentSelect =
-  document.getElementById("agentSelect");
-
-const agentDescription =
-  document.getElementById("agentDescription");
 
 const activeAgentName =
   document.getElementById("activeAgentName");
@@ -167,6 +161,7 @@ const modelAssignmentsContent =
 function initializeApplication() {
   registerNavigationEvents();
   registerShoppingEvents();
+  renderModelAssignments();
   checkPlatformHealth();
   refreshCommandCenter();
 }
@@ -377,96 +372,258 @@ function renderConnectedAgents(
             `).join("");
 }
 
+const AVAILABLE_MODELS = {
+  openai: [
+    { value: "gpt-6-astra", label: "GPT-6 Astra" },
+    { value: "gpt-5.6", label: "GPT-5.6 Sol" },
+    { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
+    { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" }
+  ],
+
+  claude: [
+    { value: "claude-fable-5", label: "Claude Fable 5" },
+    { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+    { value: "claude-opus-5", label: "Claude Opus 5" }
+  ],
+  gemini: [
+    { value: "gemini-3.8-flash",label: "Gemini 3.8 Flash"},
+    {value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+    { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview" }
+  ]
+};
+
+const DEFAULT_MODEL_ASSIGNMENTS = {
+  GOAL_INTERPRETATION: {
+    provider: "openai",
+    model: "gpt-5.6"
+  },
+
+  PRODUCT_DISCOVERY: {
+    provider: "gemini",
+    model: "gemini-3.8-flash"
+  },
+
+  GOAL_FIT_REASONING: {
+    provider: "gemini",
+    model: "gemini-3.5-flash-lite"
+  },
+
+  MERCHANT_EVIDENCE_COLLECTION: {
+    provider: "gemini",
+    model: "gemini-3.1-pro-preview"
+  },
+
+  MERCHANT_EVIDENCE_SYNTHESIS: {
+    provider: "claude",
+    model: "claude-sonnet-5"
+  },
+
+  MERCHANT_TARGETED_RESEARCH: {
+    provider: "openai",
+    model: "gpt-5.6"
+  },
+
+  RECOMMENDATION_REASONING: {
+    provider: "openai",
+    model: "gpt-5.6"
+  }
+};
+
 
 function renderModelAssignments() {
 
-    const stages = [
-        {
-            id: "goal-interpretation",
-            number: "01",
-            name: "Goal Interpretation",
-            description:
-                    "Interpret the consumer's natural-language goal, preferences, and hard constraints."
-        },
-        {
-            id: "product-discovery",
-            number: "02",
-            name: "Product Discovery",
-            description:
-                    "Search for candidate products and merchants that could satisfy the interpreted goal."
-        },
-        {
-            id: "goal-fit",
-            number: "03",
-            name: "Goal-Fit Reasoning",
-            description:
-                    "Rank viable candidates by how well they accomplish the consumer's objective."
-        },
-        {
-            id: "trust-maps",
-            number: "04",
-            name: "Trust Maps",
-            description:
-                    "Investigate and synthesize merchant evidence for shortlisted contenders."
-        },
-        {
-            id: "recommendation",
-            number: "05",
-            name: "Recommendation Reasoning",
-            description:
-                    "Combine goal fit and merchant trust evidence to select the recommended candidate."
+  const capabilities = [
+    {
+      id: "goal-interpretation",
+      capability: "GOAL_INTERPRETATION",
+      number: "01",
+      name: "Goal Interpretation",
+      description:
+        "Interpret the consumer's natural-language goal, preferences, and hard constraints."
+    },
+    {
+      id: "product-discovery",
+      capability: "PRODUCT_DISCOVERY",
+      number: "02",
+      name: "Product Discovery",
+      description:
+        "Search for candidate products and merchants that could satisfy the interpreted goal."
+    },
+    {
+      id: "goal-fit-reasoning",
+      capability: "GOAL_FIT_REASONING",
+      number: "03",
+      name: "Goal-Fit Reasoning",
+      description:
+        "Rank viable candidates by how well they accomplish the consumer's objective."
+    },
+    {
+      id: "merchant-evidence-collection",
+      capability: "MERCHANT_EVIDENCE_COLLECTION",
+      number: "04",
+      name: "Merchant Evidence Collection",
+      description:
+        "Collect representative merchant evidence for shortlisted contenders."
+    },
+    {
+      id: "merchant-evidence-synthesis",
+      capability: "MERCHANT_EVIDENCE_SYNTHESIS",
+      number: "05",
+      name: "Merchant Evidence Synthesis",
+      description:
+        "Synthesize merchant evidence, uncertainty, and material unanswered questions."
+    },
+    {
+      id: "merchant-targeted-research",
+      capability: "MERCHANT_TARGETED_RESEARCH",
+      number: "06",
+      name: "Merchant Targeted Research",
+      description:
+        "Investigate material unanswered questions identified during evidence synthesis."
+    },
+    {
+      id: "recommendation-reasoning",
+      capability: "RECOMMENDATION_REASONING",
+      number: "07",
+      name: "Recommendation Reasoning",
+      description:
+        "Combine goal fit and merchant trust evidence to select the recommended candidate."
+    }
+  ];
+
+  modelAssignmentsContent.innerHTML = `
+    <div class="model-assignment-header">
+      <div>
+        <strong>
+          Shopping Orchestration
+        </strong>
+        <p>
+          Assign a provider and model to each bounded intelligence capability.
+        </p>
+      </div>
+    </div>
+
+    <div class="model-assignment-list">
+      ${capabilities.map(capability => `
+        <div
+          class="model-assignment-row"
+          data-capability="${capability.capability}"
+        >
+          <span class="model-stage-number">
+            ${capability.number}
+          </span>
+
+          <span class="model-stage-main">
+            <strong>
+              ${capability.name}
+            </strong>
+            <span>
+              ${capability.description}
+            </span>
+          </span>
+
+          <div class="model-assignment-controls">
+
+            <select
+              class="model-provider-select"
+              data-capability="${capability.capability}"
+            >
+              <option value="openai">
+                OpenAI
+              </option>
+
+              <option value="claude">
+                Claude
+              </option>
+
+              <option value="gemini">
+                Gemini
+              </option>
+            </select>
+
+            <select
+              class="model-model-select"
+              data-capability="${capability.capability}"
+            >
+            </select>
+
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+  initializeModelAssignments();
+}
+
+function populateModelSelect(
+  modelSelect,
+  provider,
+  selectedModel = null
+) {
+  const models =
+    AVAILABLE_MODELS[provider] || [];
+
+  modelSelect.innerHTML =
+    models.map(model => `
+      <option
+        value="${model.value}"
+        ${
+          model.value === selectedModel
+            ? "selected"
+            : ""
         }
-    ];
+      >
+        ${model.label}
+      </option>
+    `).join("");
+}
 
-    modelAssignmentsContent.innerHTML = `
-        <div class="model-assignment-header">
-            <div>
-                <strong>
-                    Shopping Orchestration
-                </strong>
-                <p>
-                    Assign a model to each reasoning stage.
-                </p>
-            </div>
-        </div>
 
-        <div class="model-assignment-list">
-            ${stages.map(stage => `
-                <div
-                    class="model-assignment-row"
-                    data-stage="${stage.id}"
-                >
-                    <span class="model-stage-number">
-                        ${stage.number}
-                    </span>
+function initializeModelAssignments() {
 
-                    <span class="model-stage-main">
-                        <strong>
-                            ${stage.name}
-                        </strong>
-                        <span>
-                            ${stage.description}
-                        </span>
-                    </span>
+  document
+    .querySelectorAll(".model-assignment-row")
+    .forEach(row => {
 
-                    <select
-                        class="model-stage-select"
-                        data-model-stage="${stage.id}"
-                    >
-                        <option value="openai">
-                            OpenAI
-                        </option>
-                        <option value="anthropic">
-                            Claude
-                        </option>
-                        <option value="gemini">
-                            Gemini
-                        </option>
-                    </select>
-                </div>
-            `).join("")}
-        </div>
-    `;
+      const capability =
+        row.dataset.capability;
+
+      const assignment =
+        DEFAULT_MODEL_ASSIGNMENTS[capability];
+
+      const providerSelect =
+        row.querySelector(
+          ".model-provider-select"
+        );
+
+      const modelSelect =
+        row.querySelector(
+          ".model-model-select"
+        );
+
+      if (!assignment) {
+        return;
+      }
+
+      providerSelect.value =
+        assignment.provider;
+
+      populateModelSelect(
+        modelSelect,
+        assignment.provider,
+        assignment.model
+      );
+
+      providerSelect.addEventListener(
+        "change",
+        () => {
+          populateModelSelect(
+            modelSelect,
+            providerSelect.value
+          );
+        }
+      );
+    });
 }
 
 // -----------------------------------------------------------------------------
@@ -620,6 +777,36 @@ function readShoppingForm() {
   };
 }
 
+function buildModelAssignments() {
+  return Object.fromEntries(
+    Array.from(
+      document.querySelectorAll(
+        ".model-assignment-row"
+      )
+    ).map(row => {
+      const capability =
+        row.dataset.capability;
+
+      const provider =
+        row.querySelector(
+          ".model-provider-select"
+        ).value;
+
+      const model =
+        row.querySelector(
+          ".model-model-select"
+        ).value;
+
+      return [
+        capability,
+        {
+          provider,
+          model
+        }
+      ];
+    })
+  );
+}
 /**
  * Creates the JSON object expected by ShoppingOrchestrationRequest.
  *
@@ -628,23 +815,21 @@ function readShoppingForm() {
  * the principal profile, agent delegation, and preference services.
  */
 function buildOrchestrationRequest(formInput) {
-  if (!agentSelect.value) {
-    throw new Error(
-      "Select an AI agent before running orchestration."
-    );
-  }
-
   return {
     principalId:
-      "11111111-1111-1111-1111-111111111111",
+      PRINCIPAL_ID,
 
     agentId:
-      agentSelect.value,
+      "22222222-2222-2222-2222-222222222222",
 
     goalText:
-      buildGoalText(formInput)
+      buildGoalText(formInput),
+
+    modelAssignments:
+      buildModelAssignments()
   };
 }
+
 
 function buildGoalText(formInput) {
   return `
@@ -955,35 +1140,7 @@ function buildAuditEvents(result, originalGoal) {
     time: new Date()
   }));
 }
-function updateSelectedAgentDescription() {
-  const selectedOption =
-    agentSelect.options[
-      agentSelect.selectedIndex
-    ];
 
-  if (!selectedOption ||
-      !selectedOption.value) {
-    agentDescription.textContent =
-      "Select an available AI agent.";
-
-    activeAgentName.textContent =
-      "No agent selected";
-
-    return;
-  }
-
-  const provider =
-    selectedOption.dataset.provider;
-
-  const model =
-    selectedOption.dataset.model;
-
-  agentDescription.textContent =
-    `Provider: ${provider} · Model: ${model}`;
-
-  activeAgentName.textContent =
-    selectedOption.textContent;
-}
 
 /**
  * Loads every AI agent currently registered with Sentinq.
@@ -1006,13 +1163,17 @@ async function loadAvailableAgents() {
     const agents =
       await response.json();
 
-    populateAgentDropdown(
-      agents
-    );
-
     renderConnectedAgents(
       agents
     );
+
+    if (
+      Array.isArray(agents) &&
+      agents.length > 0
+    ) {
+      activeAgentName.textContent =
+        agents[0].agentName;
+    }
 
   } catch (error) {
     console.error(
@@ -1020,16 +1181,8 @@ async function loadAvailableAgents() {
       error
     );
 
-    agentSelect.innerHTML = `
-      <option value="">
-        Unable to load agents
-      </option>
-    `;
-
-    agentSelect.disabled = true;
-
-    agentDescription.textContent =
-      "Sentinq could not load the available agents.";
+    activeAgentName.textContent =
+      "Unavailable";
 
     connectedAgentsList.innerHTML = `
       <div class="empty-state">
@@ -1044,92 +1197,7 @@ async function loadAvailableAgents() {
   }
 }
 
-function populateAgentDropdown(agents) {
-  agentSelect.innerHTML = "";
 
-  if (!Array.isArray(agents) ||
-      agents.length === 0) {
-    agentSelect.innerHTML = `
-      <option value="">
-        No active agents available
-      </option>
-    `;
-
-    agentSelect.disabled = true;
-
-    agentDescription.textContent =
-      "No active agents are currently available.";
-
-    activeAgentName.textContent =
-      "No agent selected";
-
-    return;
-  }
-
-  agents.forEach(agent => {
-    const option =
-      document.createElement("option");
-
-    option.value =
-      agent.agentId;
-
-    option.textContent =
-      `${agent.agentName} — ${agent.model}`;
-
-    option.dataset.provider =
-      agent.provider;
-
-    option.dataset.model =
-      agent.model;
-
-    option.dataset.agentName =
-      agent.agentName;
-
-    agentSelect.appendChild(option);
-  });
-
-  agentSelect.disabled = false;
-
-  updateSelectedAgent();
-}
-
-function updateSelectedAgent() {
-  const selectedOption =
-    agentSelect.options[
-      agentSelect.selectedIndex
-    ];
-
-  if (!selectedOption ||
-      !selectedOption.value) {
-    agentDescription.textContent =
-      "Select an available AI agent.";
-
-    activeAgentName.textContent =
-      "No agent selected";
-
-    return;
-  }
-
-  const provider =
-    selectedOption.dataset.provider;
-
-  const model =
-    selectedOption.dataset.model;
-
-  const agentName =
-    selectedOption.dataset.agentName;
-
-  agentDescription.textContent =
-    `Provider: ${provider} · Model: ${model}`;
-
-  activeAgentName.textContent =
-    agentName;
-}
-
-agentSelect.addEventListener(
-  "change",
-  updateSelectedAgent
-);
 
 document.addEventListener(
   "DOMContentLoaded",
@@ -2456,28 +2524,60 @@ function renderShoppingResult(result) {
   renderTrustAssessedCandidates(
     result.trustAssessedCandidates ?? []
   );
-
-  renderResolvedCandidate(
-    result.resolvedCandidate
-  );
+  // Selected Cart intentionally hidden for now.
+  //renderResolvedCandidate(result.resolvedCandidate);
 }
 
 function renderRecommendation(recommendation) {
   if (!recommendation?.selectedCandidate) {
-    elements.selectedResult.innerHTML =
-      createBlockedDecisionHtml();
+    elements.recommendationResult.innerHTML = "";
     return;
   }
 
   const offer =
     recommendation.selectedCandidate;
 
-  elements.selectedResult.innerHTML = `
-    <article class="panel">
-      <div class="panel-heading">
+  const productImageHtml =
+    offer.productImageUrl
+      ? `
+          <div class="recommendation-image">
+            <img
+              src="${escapeHtml(
+                offer.productImageUrl
+              )}"
+              alt="${escapeHtml(
+                offer.productName
+              )}"
+              loading="lazy"
+            />
+          </div>
+        `
+      : "";
+
+  elements.recommendationResult.innerHTML = `
+    <article class="panel recommendation-card">
+
+      <div class="recommendation-header">
         <div>
-          <p class="eyebrow">SENTINQ RECOMMENDATION</p>
-          <h3>${escapeHtml(offer.productName)}</h3>
+          <p class="eyebrow">
+            SENTINQ RECOMMENDATION
+          </p>
+
+          <h3>
+            ${escapeHtml(
+              offer.productName
+            )}
+          </h3>
+
+          <p class="recommendation-meta">
+            ${escapeHtml(
+              offer.merchantName
+            )}
+            ·
+            ${formatMoney(
+              offer.productPriceCents
+            )}
+          </p>
         </div>
 
         <span class="badge badge-success">
@@ -2485,112 +2585,123 @@ function renderRecommendation(recommendation) {
         </span>
       </div>
 
-      <p class="section-copy">
-        ${escapeHtml(offer.merchantName)}
-        ·
-        ${formatMoney(offer.productPriceCents)}
-      </p>
+      <div class="recommendation-content">
+        ${productImageHtml}
 
-      <p class="section-copy">
-        ${escapeHtml(recommendation.reasoning)}
-      </p>
-    </article>
-  `;
-}
-
-function renderTrustAssessedCandidates(
-  trustAssessedCandidates
-) {
-  elements.candidateResults.innerHTML = `
-    <div class="section-heading">
-      <div>
-        <p class="eyebrow">TRUST MAPS</p>
-        <h2>Shortlisted contenders</h2>
-      </div>
-    </div>
-
-    <div class="candidate-grid">
-      ${
-        trustAssessedCandidates
-          .map(item =>
-            createTrustAssessedCandidateHtml(
-              item.candidate,
-              item.trustAssessment
-            )
-          )
-          .join("")
-      }
-    </div>
-  `;
-}
-
-function createTrustAssessedCandidateHtml(
-  assessedCandidate
-) {
-  const goalFitCandidate =
-    assessedCandidate.goalFitCandidate;
-
-  const trustAssessment =
-    assessedCandidate.trustAssessment;
-
-  const offer =
-    goalFitCandidate.offer;
-
-  return `
-    <article class="candidate-card">
-
-      <div class="candidate-header">
-        <div>
+        <div class="recommendation-reasoning">
           <p class="eyebrow">
-            GOAL-FIT RANK #${goalFitCandidate.rank}
+            WHY THIS ONE
           </p>
 
-          <h3>
+          <p class="section-copy">
             ${escapeHtml(
-              offer.merchantName
-            )}
-          </h3>
-
-          <p>
-            ${escapeHtml(
-              offer.productName
+              recommendation.reasoning
             )}
           </p>
         </div>
-
-        <span class="badge">
-          #${goalFitCandidate.rank}
-        </span>
       </div>
-
-      <div class="price-grid">
-        <span>Product price</span>
-
-        <strong>
-          ${formatMoney(
-            offer.productPriceCents
-          )}
-        </strong>
-      </div>
-
-      <div class="goal-fit-summary">
-        <p class="eyebrow">
-          GOAL FIT
-        </p>
-
-        <p class="section-copy">
-          ${escapeHtml(
-            goalFitCandidate.reasoning
-          )}
-        </p>
-      </div>
-
-      ${createTrustMapSummaryHtml(
-        trustAssessment
-      )}
 
     </article>
   `;
+}
+
+
+function createTrustAssessedCandidateHtml(
+    assessedCandidate
+) {
+    const goalFitCandidate =
+        assessedCandidate.goalFitCandidate;
+
+    const trustAssessment =
+        assessedCandidate.trustAssessment;
+
+    const offer =
+        goalFitCandidate.offer;
+
+        console.log(
+            "CANDIDATE IMAGE DEBUG",
+            {
+                productName: offer.productName,
+                productImageUrl: offer.productImageUrl,
+                merchantUrl: offer.merchantUrl,
+                offer: offer
+            }
+        );
+
+    const productImageHtml =
+        offer.productImageUrl
+            ? `
+                <div class="candidate-product-image">
+                    <img
+                        src="${escapeHtml(
+                            offer.productImageUrl
+                        )}"
+                        alt="${escapeHtml(
+                            offer.productName
+                        )}"
+                        loading="lazy"
+                    />
+                </div>
+              `
+            : "";
+
+    return `
+        <article class="candidate-card">
+
+            ${productImageHtml}
+
+            <div class="candidate-header">
+                <div>
+                    <p class="eyebrow">
+                        GOAL-FIT RANK #${goalFitCandidate.rank}
+                    </p>
+
+                    <h3>
+                        ${escapeHtml(
+                            offer.merchantName
+                        )}
+                    </h3>
+
+                    <p>
+                        ${escapeHtml(
+                            offer.productName
+                        )}
+                    </p>
+                </div>
+
+                <span class="badge">
+                    #${goalFitCandidate.rank}
+                </span>
+            </div>
+
+            <div class="price-grid">
+                <span>Product price</span>
+
+                <strong>
+                    ${formatMoney(
+                        offer.productPriceCents
+                    )}
+                </strong>
+            </div>
+
+            <div class="goal-fit-summary">
+                <p class="eyebrow">
+                    GOAL FIT
+                </p>
+
+                <p class="section-copy">
+                    ${escapeHtml(
+                        goalFitCandidate.reasoning
+                    )}
+                </p>
+            </div>
+
+            ${createTrustMapSummaryHtml(
+                trustAssessment
+            )}
+
+        </article>
+    `;
 }
 
 

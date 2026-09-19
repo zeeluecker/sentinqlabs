@@ -2,10 +2,12 @@ package com.sentinq.ai;
 
 import com.sentinq.ai.provider.ProductSearchProvider;
 import com.sentinq.ai.provider.ProductSearchProviderRegistry;
-import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.*;
 import com.sentinq.goal.Goal;
 import com.sentinq.preference.ConsumerPreferences;
 import org.springframework.stereotype.Service;
+
+import java.util.UUID;
 
 @Service
 public class ProductSearchService {
@@ -22,20 +24,30 @@ public class ProductSearchService {
     }
 
     public ProductSearchResult search(
-            String providerId,
+            UUID executionId,
             Goal goal,
-            ConsumerPreferences preferences
+            ConsumerPreferences preferences,
+            ModelAssignment assignment
     ) {
         ProductSearchProvider provider =
                 providerRegistry.getProvider(
-                        providerId
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.PRODUCT_DISCOVERY
                 );
 
         return llmInvocationObserver.execute(
+                capabilityIdentity,
                 () ->
                         provider.searchProducts(
                                 goal,
-                                preferences
+                                preferences,
+                                assignment.model()
                         )
         );
     }

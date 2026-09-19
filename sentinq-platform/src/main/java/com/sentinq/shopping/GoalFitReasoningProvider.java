@@ -12,6 +12,7 @@ public interface GoalFitReasoningProvider {
 
     LlmResult<GoalFitReasoningDecision> rank(
             Goal goal,
-            List<CandidateOffer> candidates
+            List<CandidateOffer> candidates,
+            String model
     );
 }

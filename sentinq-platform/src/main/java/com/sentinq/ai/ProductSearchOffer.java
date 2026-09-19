@@ -20,6 +20,11 @@ public class ProductSearchOffer {
     public String productUrl;
 
     @JsonPropertyDescription(
+            "Direct URL of the primary product image shown for this product. Used only for presentation."
+    )
+    public String productImageUrl;
+
+    @JsonPropertyDescription(
             "Listed product price in cents, excluding unresolved shipping and tax."
     )
     public int productPriceCents;

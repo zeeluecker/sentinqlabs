@@ -1,9 +1,11 @@
 package com.sentinq.shopping;
 
 import com.sentinq.ai.*;
-import com.sentinq.evaluation.CapabilityTrace;
+
+import com.sentinq.evaluation.Capability;
 import com.sentinq.evaluation.CapabilityTraceWriter;
-import com.sentinq.evaluation.LlmResult;
+
+import com.sentinq.evaluation.ModelCapabilityAssignments;
 import com.sentinq.goal.*;
 import com.sentinq.identity.*;
 import com.sentinq.identity.PrincipalService;
@@ -18,11 +20,10 @@ import com.sentinq.audit.AuditService;
 import com.sentinq.audit.ExecutionTrace;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
-import java.time.LocalDate;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,7 +47,6 @@ public class ShoppingOrchestrationService {
     private final RecommendationReasoningService
             recommendationReasoningService;
     private ExecutionFactsResolver executionFactsResolver;
-    private final CapabilityTraceWriter capabilityTraceWriter;
 
     public ShoppingOrchestrationService(
             MandateBuilder mandateBuilder,
@@ -65,8 +65,7 @@ public class ShoppingOrchestrationService {
             GoalFitReasoningService goalFitReasoningService,
             RecommendationReasoningService
                     recommendationReasoningService,
-            ExecutionFactsResolver executionFactsResolver,
-            CapabilityTraceWriter capabilityTraceWriter
+            ExecutionFactsResolver executionFactsResolver
 
     ) {
         this.mandateBuilder = mandateBuilder;
@@ -84,16 +83,20 @@ public class ShoppingOrchestrationService {
         this.goalFitReasoningService = goalFitReasoningService;
         this.recommendationReasoningService = recommendationReasoningService;
         this.executionFactsResolver = executionFactsResolver;
-        this.capabilityTraceWriter = capabilityTraceWriter;
     }
 
     public ShoppingOrchestrationResult orchestrate(
             ShoppingGoalRequest request
     ) {
+
         ExecutionTrace trace =
                 auditService.startTrace(
                         request.principalId(),
                         request.agentId()
+                );
+        ModelCapabilityAssignments executionModelAssignments =
+                new ModelCapabilityAssignments(
+                        request.modelAssignments()
                 );
 
         auditService.recordEvent(
@@ -122,17 +125,11 @@ public class ShoppingOrchestrationService {
                         request.agentId()
                 );
 
-        auditService.setProviderDetails(
-                trace.getTraceId(),
-                agent.getProvider(),
-                agent.getModel()
-        );
-
         auditService.recordEvent(
                 trace.getTraceId(),
                 AuditEventType.AGENT_SELECTED,
                 "AgentIdentityService",
-                "Agent and reasoning provider selected.",
+                "Agent identity selected.",
                 agent
         );
 
@@ -167,8 +164,11 @@ public class ShoppingOrchestrationService {
 
         InterpretedShoppingGoal interpretation =
                 goalInterpretationService.interpret(
-                        agent.getProvider(),
-                        request.goalText()
+                        trace.getTraceId(),
+                        request.goalText(),
+                        executionModelAssignments.assignmentFor(
+                                Capability.GOAL_INTERPRETATION
+                        )
                 );
         //interpretation.
         auditService.recordEvent(
@@ -221,10 +221,8 @@ public class ShoppingOrchestrationService {
                 trace.getTraceId(),
                 AuditEventType.SEARCH_REQUEST_SENT,
                 "ProductSearchService",
-                "Governed search context sent to the selected provider.",
+                "Governed search context sent for product discovery.",
                 Map.of(
-                        "provider", agent.getProvider(),
-                        "model", agent.getModel(),
                         "goal", goal,
                         "preferences", preferences,
                         "mandate", mandate
@@ -234,9 +232,12 @@ public class ShoppingOrchestrationService {
 
         ProductSearchResult searchResult =
                 productSearchService.search(
-                        agent.getProvider(),
+                        trace.getTraceId(),
                         goal,
-                        preferences
+                        preferences,
+                        executionModelAssignments.assignmentFor(
+                                Capability.PRODUCT_DISCOVERY
+                        )
                 );
 
         Instant productSearchCompletedAt =
@@ -313,9 +314,12 @@ public class ShoppingOrchestrationService {
 
         List<GoalFitCandidate> goalFitCandidates;
         goalFitCandidates = goalFitReasoningService.rank(
-                agent.getProvider(),
+                trace.getTraceId(),
                 goal,
-                screenedCandidates
+                candidates,
+                executionModelAssignments.assignmentFor(
+                        Capability.GOAL_FIT_REASONING
+                )
         );
 
         List<GoalFitCandidate> shortlistedCandidates =
@@ -402,10 +406,11 @@ public class ShoppingOrchestrationService {
                                         CompletableFuture.supplyAsync(
                                                 () ->
                                                         assessCandidateTrust(
-                                                                agent.getProvider(),
+                                                                trace.getTraceId(),
                                                                 goalFitCandidate,
                                                                 goal,
-                                                                preferences
+                                                                preferences,
+                                                                executionModelAssignments
                                                         ),
                                                 trustMapExecutor
                                         )
@@ -432,9 +437,12 @@ public class ShoppingOrchestrationService {
         if (!trustAssessedCandidates.isEmpty()) {
             recommendation =
                     recommendationReasoningService.recommend(
-                            agent.getProvider(),
+                            trace.getTraceId(),
                             goal,
-                            trustAssessedCandidates
+                            trustAssessedCandidates,
+                            executionModelAssignments.assignmentFor(
+                                    Capability.RECOMMENDATION_REASONING
+                            )
                     );
         }
 
@@ -529,6 +537,8 @@ public class ShoppingOrchestrationService {
         return result;
     }
 
+
+
     private boolean shouldExcludeDuringHardScreening(
             CandidateOffer candidate,
             MandateEnvelope mandate
@@ -586,10 +596,11 @@ public class ShoppingOrchestrationService {
     }
 
     private TrustAssessedCandidate assessCandidateTrust(
-            String provider,
+            UUID executionId,
             GoalFitCandidate goalFitCandidate,
             Goal goal,
-            ConsumerPreferences preferences
+            ConsumerPreferences preferences,
+            ModelCapabilityAssignments executionModelAssignments
     ) {
         CandidateOffer candidate =
                 goalFitCandidate.offer();
@@ -603,9 +614,10 @@ public class ShoppingOrchestrationService {
 
         MerchantTrustAssessment trustAssessment =
                 trustMapOrchestrationService.assessMerchant(
-                        provider,
+                        executionId,
                         candidate,
-                        trustContext
+                        trustContext,
+                        executionModelAssignments
                 );
 
         return new TrustAssessedCandidate(

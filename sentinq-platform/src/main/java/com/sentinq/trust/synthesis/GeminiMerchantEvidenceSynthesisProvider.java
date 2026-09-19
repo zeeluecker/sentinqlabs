@@ -23,8 +23,7 @@ import java.util.stream.Collectors;
 public class GeminiMerchantEvidenceSynthesisProvider
         implements MerchantEvidenceSynthesisProvider {
 
-    private static final String MODEL =
-            "gemini-3.1-pro-preview";
+
 
     private final Client geminiClient;
     private final ObjectMapper objectMapper;
@@ -55,7 +54,8 @@ public class GeminiMerchantEvidenceSynthesisProvider
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateSynthesisInputs(
                 merchantId,
@@ -82,7 +82,7 @@ public class GeminiMerchantEvidenceSynthesisProvider
         try {
             response =
                     geminiClient.models.generateContent(
-                            MODEL,
+                            model,
                             prompt,
                             null
                     );
@@ -93,7 +93,7 @@ public class GeminiMerchantEvidenceSynthesisProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL
+                    model
             );
 
             trace.setOutcome(
@@ -117,6 +117,20 @@ public class GeminiMerchantEvidenceSynthesisProvider
         response.modelVersion().ifPresent(
                 trace::setModel
         );
+
+        response.candidates()
+                .flatMap(candidates ->
+                        candidates.stream()
+                                .findFirst()
+                )
+                .flatMap(candidate ->
+                        candidate.finishReason()
+                )
+                .ifPresent(finishReason ->
+                        trace.setStatus(
+                                finishReason.toString()
+                        )
+                );
 
         response.usageMetadata().ifPresent(usage -> {
 
@@ -179,12 +193,13 @@ public class GeminiMerchantEvidenceSynthesisProvider
     }
 
     @Override
-    public MerchantEvidenceSynthesis refineSynthesis(
+    public LlmResult<MerchantEvidenceSynthesis> refineSynthesis(
             String merchantId,
             String merchantName,
             MerchantEvidenceSynthesis initialSynthesis,
             List<TrustEvidence> researchedEvidence,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateRefinementInputs(
                 merchantId,
@@ -208,16 +223,119 @@ public class GeminiMerchantEvidenceSynthesisProvider
                         + prompt.length()
         );
 
-        GenerateContentResponse response =
-                geminiClient.models.generateContent(
-                        MODEL,
-                        prompt,
-                        null
+        GenerateContentResponse response;
+
+        try {
+            response =
+                    geminiClient.models.generateContent(
+                            model,
+                            prompt,
+                            null
+                    );
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    model
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini merchant evidence refinement invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        response.responseId().ifPresent(
+                trace::setResponseId
+        );
+
+        response.modelVersion().ifPresent(
+                trace::setModel
+        );
+
+        response.candidates()
+                .flatMap(candidates ->
+                        candidates.stream()
+                                .findFirst()
+                )
+                .flatMap(candidate ->
+                        candidate.finishReason()
+                )
+                .ifPresent(finishReason ->
+                        trace.setStatus(
+                                finishReason.toString()
+                        )
                 );
 
-        return deserializeSynthesis(
-                response.text()
-        );
+        response.usageMetadata().ifPresent(usage -> {
+
+            usage.promptTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setInputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.candidatesTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setOutputTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.thoughtsTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setReasoningTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+
+            usage.totalTokenCount().ifPresent(
+                    tokenCount ->
+                            trace.setTotalTokens(
+                                    tokenCount.longValue()
+                            )
+            );
+        });
+
+        try {
+            MerchantEvidenceSynthesis synthesis =
+                    deserializeSynthesis(
+                            response.text()
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Gemini merchant evidence refinement violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private String buildEvidenceSynthesisPrompt(

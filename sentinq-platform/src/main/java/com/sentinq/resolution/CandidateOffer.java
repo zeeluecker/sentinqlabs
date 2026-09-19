@@ -22,6 +22,14 @@ public class CandidateOffer {
      */
     private String discoveryMatchReason;
 
+    /*
+     * Presentation-only product image established during discovery.
+     *
+     * This value may be returned to the consumer interface but must
+     * not be used as reasoning evidence by downstream AI capabilities.
+     */
+    private String productImageUrl;
+
     private Integer productPriceCents;
     private Integer fulfillmentScore;
     private Integer reviewScore;
@@ -105,5 +113,13 @@ public class CandidateOffer {
 
     public void setMerchantUrl(String merchantUrl) {
         this.merchantUrl = merchantUrl;
+    }
+
+    public String getProductImageUrl() {
+        return productImageUrl;
+    }
+
+    public void setProductImageUrl(String productImageUrl) {
+        this.productImageUrl = productImageUrl;
     }
 }

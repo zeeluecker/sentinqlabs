@@ -1,13 +1,13 @@
 package com.sentinq.trust.observations;
 
-import com.sentinq.evaluation.LlmInvocationObserver;
-import com.sentinq.evaluation.LlmResult;
+import com.sentinq.evaluation.*;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class MerchantEvidenceCollectionService {
@@ -27,18 +27,19 @@ public class MerchantEvidenceCollectionService {
         this.evidenceFactory =
                 evidenceFactory;
 
-        this.llmInvocationObserver = llmInvocationObserver;
+        this.llmInvocationObserver =
+                llmInvocationObserver;
     }
 
     public List<TrustEvidence> collectEvidence(
-            String providerId,
+            UUID executionId,
             String merchantId,
             String merchantName,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            ModelAssignment assignment
     ) {
         validateInputs(
-                providerId,
                 merchantId,
                 merchantName,
                 offer,
@@ -47,17 +48,26 @@ public class MerchantEvidenceCollectionService {
 
         MerchantEvidenceCollectionProvider provider =
                 providerRegistry.getProvider(
-                        providerId
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.MERCHANT_EVIDENCE_COLLECTION
                 );
 
         MerchantEvidenceCollectionDecision decision =
                 llmInvocationObserver.execute(
+                        capabilityIdentity,
                         () ->
                                 provider.collectMerchantEvidence(
                                         merchantId,
                                         merchantName,
                                         offer,
-                                        context
+                                        context,
+                                        assignment.model()
                                 )
                 );
 
@@ -73,18 +83,11 @@ public class MerchantEvidenceCollectionService {
     }
 
     private void validateInputs(
-            String providerId,
             String merchantId,
             String merchantName,
             CandidateOffer offer,
             TrustContext context
     ) {
-        if (providerId == null ||
-                providerId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Provider ID is required."
-            );
-        }
 
         if (merchantId == null ||
                 merchantId.isBlank()) {

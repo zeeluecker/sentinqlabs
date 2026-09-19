@@ -1,5 +1,7 @@
 package com.sentinq.evaluation;
 
+import java.util.UUID;
+
 public class LlmCapabilityTrace
 {
     private String responseId;
@@ -11,6 +13,10 @@ public class LlmCapabilityTrace
     private Long reasoningTokens;
     private Long totalTokens;
     private LlmInvocationOutcome outcome;
+    private Long durationMs;
+    private UUID executionId;
+    private UUID capabilityInvocationId;
+    private Capability capability;
 
     public String getResponseId() {
         return responseId;
@@ -76,5 +82,40 @@ public class LlmCapabilityTrace
             LlmInvocationOutcome outcome
     ) {
         this.outcome = outcome;
+    }
+
+    public Long getDurationMs() {
+        return durationMs;
+    }
+
+    public void setDurationMs(
+            Long durationMs
+    ) {
+        this.durationMs =
+                durationMs;
+    }
+
+    public UUID getExecutionId() {
+        return executionId;
+    }
+
+    public void setExecutionId(UUID executionId) {
+        this.executionId = executionId;
+    }
+
+    public UUID getCapabilityInvocationId() {
+        return capabilityInvocationId;
+    }
+
+    public void setCapabilityInvocationId(UUID capabilityInvocationId) {
+        this.capabilityInvocationId = capabilityInvocationId;
+    }
+
+    public Capability getCapability() {
+        return capability;
+    }
+
+    public void setCapability(Capability capability) {
+        this.capability = capability;
     }
 }

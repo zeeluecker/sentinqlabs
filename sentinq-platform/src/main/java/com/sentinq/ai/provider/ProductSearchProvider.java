@@ -10,7 +10,9 @@ public interface ProductSearchProvider {
     String getProviderId();
 
     LlmResult<ProductSearchResult> searchProducts(
+
             Goal goal,
-            ConsumerPreferences preferences
+            ConsumerPreferences preferences,
+            String model
     );
 }

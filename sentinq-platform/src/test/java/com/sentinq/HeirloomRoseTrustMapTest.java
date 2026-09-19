@@ -73,7 +73,7 @@ class HeirloomRoseTrustMapTest {
 
         /*
          * PRODUCT SEARCH
-         */
+
         LlmResult<ProductSearchResult> result =
                 openAiProvider.searchProducts(
                         goal,
@@ -83,7 +83,7 @@ class HeirloomRoseTrustMapTest {
 
         /*
          * DOMAIN RESULT
-         */
+
         assertNotNull(
                 result
         );
@@ -103,7 +103,7 @@ class HeirloomRoseTrustMapTest {
 
         /*
          * EXECUTION TRACE
-         */
+
         assertNotNull(
                 result.getTrace()
         );
@@ -114,7 +114,7 @@ class HeirloomRoseTrustMapTest {
 
         /*
          * OUTPUT
-         */
+
         System.out.println();
         System.out.println("==============================");
         System.out.println("PRODUCT SEARCH TRACE");
@@ -158,7 +158,7 @@ class HeirloomRoseTrustMapTest {
 
         /*
          * TRACE ASSERTIONS
-         */
+
         assertNotNull(
                 trace.getResponseId()
         );
@@ -178,5 +178,7 @@ class HeirloomRoseTrustMapTest {
         assertNotNull(
                 trace.getTotalTokens()
         );
+
+         */
     }
 }

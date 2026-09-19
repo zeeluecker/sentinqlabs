@@ -15,6 +15,7 @@ public interface MerchantTargetedResearchProvider {
             String merchantName,
             List<TrustEvidence> existingEvidence,
             MerchantEvidenceSynthesis synthesis,
-            TrustContext context
+            TrustContext context,
+            String model
     );
 }

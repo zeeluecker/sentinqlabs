@@ -22,8 +22,6 @@ import java.util.List;
 public class ClaudeMerchantTargetedResearchProvider
         implements MerchantTargetedResearchProvider {
 
-    private static final String MODEL =
-            Model.CLAUDE_SONNET_5.toString();
 
     private final AnthropicClient anthropicClient;
     private final ObjectMapper objectMapper;
@@ -49,7 +47,8 @@ public class ClaudeMerchantTargetedResearchProvider
             String merchantName,
             List<TrustEvidence> existingEvidence,
             MerchantEvidenceSynthesis synthesis,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateInputs(
                 merchantId,
@@ -66,7 +65,7 @@ public class ClaudeMerchantTargetedResearchProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(4096L)
                         .addTool(webSearchTool)
                         .addUserMessage(
@@ -92,7 +91,7 @@ public class ClaudeMerchantTargetedResearchProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                    model
             );
 
             trace.setOutcome(
@@ -147,6 +146,13 @@ public class ClaudeMerchantTargetedResearchProvider
                             response
                     );
 
+            System.out.println(
+                    "[Claude Targeted Research] Raw response:"
+            );
+
+            System.out.println(
+                    responseText
+            );
             MerchantTargetedResearchDecision decision =
                     deserialize(
                             responseText

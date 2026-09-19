@@ -9,7 +9,8 @@ public interface LlmProvider {
     String getProviderId();
 
      LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
-            String rawGoalText
+            String rawGoalText,
+            String model
     );
 
 }

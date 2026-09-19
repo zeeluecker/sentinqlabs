@@ -11,6 +11,7 @@ public interface RecommendationReasoningProvider {
 
     LlmResult<RecommendationReasoningDecision> recommend(
             Goal goal,
-            List<TrustAssessedCandidate> candidates
+            List<TrustAssessedCandidate> candidates,
+            String model
     );
 }

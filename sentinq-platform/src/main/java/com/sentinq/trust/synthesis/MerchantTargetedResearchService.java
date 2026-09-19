@@ -1,11 +1,12 @@
 package com.sentinq.trust.synthesis;
 
-import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.*;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class MerchantTargetedResearchService {
@@ -22,24 +23,37 @@ public class MerchantTargetedResearchService {
     }
 
     public MerchantTargetedResearchDecision research(
-            String provider,
+            UUID executionId,
             String merchantId,
             String merchantName,
             List<TrustEvidence> existingEvidence,
             MerchantEvidenceSynthesis synthesis,
-            TrustContext context
+            TrustContext context,
+            ModelAssignment assignment
     ) {
+        MerchantTargetedResearchProvider researchProvider =
+                providerRegistry.getProvider(
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.MERCHANT_TARGETED_RESEARCH
+                );
+
         return llmInvocationObserver.execute(
+                capabilityIdentity,
                 () ->
-                        providerRegistry
-                                .getProvider(provider)
-                                .research(
-                                        merchantId,
-                                        merchantName,
-                                        existingEvidence,
-                                        synthesis,
-                                        context
-                                )
+                        researchProvider.research(
+                                merchantId,
+                                merchantName,
+                                existingEvidence,
+                                synthesis,
+                                context,
+                                assignment.model()
+                        )
         );
     }
 }

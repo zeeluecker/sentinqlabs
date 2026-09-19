@@ -1,12 +1,12 @@
 package com.sentinq.trust.synthesis;
 
-import com.sentinq.evaluation.LlmInvocationObserver;
-
+import com.sentinq.evaluation.*;
 import com.sentinq.trust.TrustContext;
 import com.sentinq.trust.TrustEvidence;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class MerchantEvidenceSynthesisService {
@@ -23,47 +23,70 @@ public class MerchantEvidenceSynthesisService {
     }
 
     public MerchantEvidenceSynthesis synthesize(
-            String provider,
+            UUID executionId,
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
-            TrustContext context
+            TrustContext context,
+            ModelAssignment assignment
     ) {
         MerchantEvidenceSynthesisProvider synthesisProvider =
                 providerRegistry.getProvider(
-                        provider
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.MERCHANT_EVIDENCE_SYNTHESIS
                 );
 
         return llmInvocationObserver.execute(
+                capabilityIdentity,
                 () ->
                         synthesisProvider.synthesizeEvidence(
                                 merchantId,
                                 merchantName,
                                 evidence,
-                                context
+                                context,
+                                assignment.model()
                         )
         );
     }
 
     public MerchantEvidenceSynthesis refine(
-            String provider,
+            UUID executionId,
             String merchantId,
             String merchantName,
             MerchantEvidenceSynthesis initialSynthesis,
             List<TrustEvidence> researchedEvidence,
-            TrustContext context
+            TrustContext context,
+            ModelAssignment assignment
     ) {
         MerchantEvidenceSynthesisProvider synthesisProvider =
                 providerRegistry.getProvider(
-                        provider
+                        assignment.provider()
                 );
 
-        return synthesisProvider.refineSynthesis(
-                merchantId,
-                merchantName,
-                initialSynthesis,
-                researchedEvidence,
-                context
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.MERCHANT_EVIDENCE_SYNTHESIS
+                );
+
+        return llmInvocationObserver.execute(
+                capabilityIdentity,
+                () ->
+                        synthesisProvider.refineSynthesis(
+                                merchantId,
+                                merchantName,
+                                initialSynthesis,
+                                researchedEvidence,
+                                context,
+                                assignment.model()
+                        )
         );
     }
 }

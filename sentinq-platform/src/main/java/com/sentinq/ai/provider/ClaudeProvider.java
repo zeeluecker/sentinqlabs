@@ -40,8 +40,6 @@ public class ClaudeProvider
 
     private final AnthropicClient anthropicClient;
     private final ObjectMapper objectMapper;
-    public static final String MODEL =
-            Model.CLAUDE_SONNET_5.toString();
     public final long maxtokens = 8192L;
 
     public ClaudeProvider(
@@ -58,15 +56,17 @@ public class ClaudeProvider
         return "claude";
     }
 
+
     @Override
     public LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
-            String rawGoalText
+            String rawGoalText,
+            String model
     ) {
         validateGoalText(rawGoalText);
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(maxtokens)
                         .addUserMessage(
                                 buildPrompt(rawGoalText)
@@ -86,7 +86,7 @@ public class ClaudeProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                    model
             );
 
             trace.setOutcome(
@@ -173,7 +173,8 @@ public class ClaudeProvider
     @Override
     public LlmResult<ProductSearchResult> searchProducts(
             Goal goal,
-            ConsumerPreferences preferences
+            ConsumerPreferences preferences,
+            String model
     ) {
         validateSearchInputs(
                 goal,
@@ -182,12 +183,12 @@ public class ClaudeProvider
 
         WebSearchTool20250305 webSearchTool =
                 WebSearchTool20250305.builder()
-                        .maxUses(5L)
+                        .maxUses(maxtokens)
                         .build();
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(maxtokens)
                         .addTool(webSearchTool)
                         .addUserMessage(
@@ -211,7 +212,7 @@ public class ClaudeProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                    model
             );
 
             trace.setOutcome(
@@ -299,7 +300,243 @@ public class ClaudeProvider
         }
     }
 
+    @Override
+    public LlmResult<GoalFitReasoningDecision> rank(
+            Goal goal,
+            List<CandidateOffer> candidates,
+            String model
+    ) {
+        validateGoalFitInputs(
+                goal,
+                candidates
+        );
 
+        MessageCreateParams params =
+                MessageCreateParams.builder()
+                        .model(model)
+                        .maxTokens(maxtokens)
+                        .addUserMessage(
+                                buildGoalFitPrompt(
+                                        goal,
+                                        candidates
+                                )
+                        )
+                        .build();
+
+        Message response;
+
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    model
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal-fit reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            GoalFitReasoningDecision decision =
+                    deserializeGoalFitDecision(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude goal-fit reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+    }
+
+    @Override
+    public LlmResult<RecommendationReasoningDecision> recommend(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates,
+            String model
+    ) {
+        validateRecommendationInputs(
+                goal,
+                candidates
+        );
+
+        MessageCreateParams params =
+                MessageCreateParams.builder()
+                        .model(model)
+                        .maxTokens(maxtokens)
+                        .addUserMessage(
+                                buildRecommendationPrompt(
+                                        goal,
+                                        candidates
+                                )
+                        )
+                        .build();
+
+        Message response;
+
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(
+                    model
+            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude recommendation reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(
+                            response
+                    );
+
+            RecommendationReasoningDecision decision =
+                    deserializeRecommendationDecision(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude recommendation reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+    }
 
     private EvidenceInterpretationDecision deserializeEvidenceInterpretation(
             String responseText
@@ -702,59 +939,82 @@ public class ClaudeProvider
             ConsumerPreferences preferences
     ) {
         return """
-            You are performing real-time product discovery for Sentinq.
+        You are performing real-time product discovery for Sentinq.
 
-            Use web search to find real, currently listed products.
+        Use web search to find real, currently listed products.
 
-            Return only a valid JSON object.
-            Do not include markdown, commentary, citations outside the JSON,
-            or a code fence.
+        Return only a valid JSON object.
+        Do not include markdown, commentary, citations outside the JSON,
+        or a code fence.
 
-            Use exactly this structure:
+        Use exactly this structure:
 
+        {
+          "offers": [
             {
-              "offers": [
-                {
-                  "merchantName": "string",
-                  "productName": "string",
-                  "productUrl": "string",
-                  "productPriceCents": 0,
-                  "inventoryAvailable": true,
-                  "matchReason": "string"
-                }
-              ]
+              "merchantName": "string",
+              "productName": "string",
+              "productUrl": "string",
+              "productImageUrl": "string or null",
+              "productDescription": "string or null",
+              "productPriceCents": 0,
+              "inventoryAvailable": true,
+              "matchReason": "string"
             }
+          ]
+        }
 
-            Shopping goal:
-            - Product: %s
-            - Original request: %s
-            - Maximum total budget: %d cents
-            - Delivery deadline: %s
-            - Substitutions allowed: %s
+        Shopping goal:
+        - Product: %s
+        - Original request: %s
+        - Maximum total budget: %d cents
+        - Delivery deadline: %s
+        - Substitutions allowed: %s
 
-            Consumer merchant preferences:
-            - Preferred merchants: %s
-            - Avoided merchants: %s
-            - Preferred merchant types: %s
-            - Minimum fulfillment score: %s
-            - Minimum review score: %s
-            - Ask before using a new merchant: %s
+        Consumer merchant preferences:
+        - Preferred merchants: %s
+        - Avoided merchants: %s
+        - Preferred merchant types: %s
+        - Minimum fulfillment score: %s
+        - Minimum review score: %s
+        - Ask before using a new merchant: %s
 
-            Rules:
-            - Return no more than five offers.
-            - Search the current public web before answering.
-            - Prefer explicitly preferred merchants when they sell
-              a relevant product.
-            - Never return merchants listed as avoided.
-            - Use only real product pages found during search.
-            - Do not invent merchants, URLs, prices, or inventory.
-            - productPriceCents must contain the listed item price only.
-            - If the listed price cannot be verified, omit that offer.
-            - Shipping, taxes, and final delivery feasibility will be
-              resolved separately by Sentinq.
-            - Include a concise matchReason for each offer.
+        Rules:
+        - Return no more than five offers.
+        - Search the current public web before answering.
+        - Prefer explicitly preferred merchants when they sell
+          a relevant product.
+        - Never return merchants listed as avoided.
+        - Use only real product pages found during search.
+        - Do not invent merchants, URLs, prices, or inventory.
+        - productPriceCents must contain the listed item price only.
+        - If the listed price cannot be verified, omit that offer.
+        - Shipping, taxes, and final delivery feasibility will be
+          resolved separately by Sentinq.
 
-            """.formatted(
+        - Include a concise factual productDescription containing attributes
+          relevant to the consumer's goal when those attributes are supported
+          by the discovered product information.
+
+        - Do not invent product attributes that are not supported by the
+          discovered source.
+
+        - Include a concise matchReason for each offer.
+
+        - When a direct URL for the product's primary image can be reliably
+          established from the discovered product information, return it as
+          productImageUrl.
+
+        - productImageUrl is presentation metadata only. Do not use the
+          presence, absence, appearance, or quality of a product image when
+          deciding whether a product matches the consumer's goal.
+
+        - Do not infer, construct, transform, or guess an image URL.
+
+        - If a direct product image URL cannot be reliably established,
+          return null for productImageUrl.
+
+        """.formatted(
                 goal.getProductName(),
                 goal.getOriginalRequest(),
                 goal.getMaximumTotalCents(),
@@ -853,38 +1113,45 @@ public class ClaudeProvider
             String rawGoalText
     ) {
         return """
-                You are interpreting a consumer shopping goal for Sentinq.
+        You are interpreting a consumer shopping goal for Sentinq.
 
-                Return only a valid JSON object.
-                Do not include markdown, commentary, or a code fence.
+        Return only a valid JSON object.
+        Do not include markdown, commentary, or a code fence.
 
-                Use exactly this structure:
+        Use exactly this structure:
 
-                {
-                  "productName": "string",
-                  "maximumTotalCents": 0,
-                  "deliveryDeadline": "YYYY-MM-DD",
-                  "substitutionsAllowed": false,
-                  "productRequirements": [],
-                  "clarificationQuestions": []
-                }
+        {
+          "productName": "string",
+          "maximumTotalCents": 0,
+          "deliveryDeadline": "YYYY-MM-DD",
+          "substitutionsAllowed": false,
+          "productRequirements": [],
+          "clarificationQuestions": []
+        }
 
-                Rules:
-                - productName must be concise and useful for product discovery.
-                - maximumTotalCents must represent the total budget in cents.
-                - deliveryDeadline must be formatted as YYYY-MM-DD.
-                - Do not invent a budget or deadline.
-                - If a critical value is missing, add a clarification question.
-                - productRequirements should capture relevant appearance,
-                  size, compatibility, usage, or delivery requirements.
-                - If substitutions are not mentioned, set
-                  substitutionsAllowed to false.
-                - clarificationQuestions must be an empty list when none
-                  are required.
+        Rules:
+        - productName must be concise and useful for product discovery.
+        - maximumTotalCents must represent the total budget in cents.
+        - deliveryDeadline must be formatted as YYYY-MM-DD.
+        - Do not invent a budget or deadline.
+        - Ask a clarification question only when missing information
+          prevents the stated shopping goal from being interpreted or
+          meaningfully pursued.
+        - Do not ask for optional preferences, attributes, or details
+          merely because they could improve the recommendation.
+        - Leave unspecified preferences unconstrained so they can be
+          resolved during discovery and downstream reasoning.
+        - productRequirements should capture relevant appearance,
+          size, compatibility, usage, or delivery requirements that
+          the consumer actually stated.
+        - If substitutions are not mentioned, set
+          substitutionsAllowed to false.
+        - clarificationQuestions must be an empty list when none
+          are required.
 
-                Consumer goal:
-                %s
-                """.formatted(rawGoalText);
+        Consumer goal:
+        %s
+        """.formatted(rawGoalText);
     }
 
     private void validateGoalText(
@@ -934,123 +1201,6 @@ public class ClaudeProvider
         return cleaned.trim();
     }
 
-    @Override
-    public LlmResult<GoalFitReasoningDecision> rank(
-            Goal goal,
-            List<CandidateOffer> candidates
-    ) {
-        validateGoalFitInputs(
-                goal,
-                candidates
-        );
-
-        MessageCreateParams params =
-                MessageCreateParams.builder()
-                        .model(MODEL)
-                        .maxTokens(maxtokens)
-                        .addUserMessage(
-                                buildGoalFitPrompt(
-                                        goal,
-                                        candidates
-                                )
-                        )
-                        .build();
-
-        Message response;
-
-        try {
-            response =
-                    anthropicClient.messages()
-                            .create(params);
-
-        } catch (RuntimeException e) {
-
-            LlmCapabilityTrace trace =
-                    new LlmCapabilityTrace();
-
-            trace.setModel(
-                    MODEL.toString()
-            );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.PROVIDER_ERROR
-            );
-
-            throw new LlmInvocationException(
-                    "Claude goal-fit reasoning invocation failed.",
-                    e,
-                    trace
-            );
-        }
-
-        LlmCapabilityTrace trace =
-                new LlmCapabilityTrace();
-
-        trace.setResponseId(
-                response.id()
-        );
-
-        trace.setModel(
-                response.model().toString()
-        );
-
-        trace.setStatus(
-                response.stopReason()
-                        .map(Object::toString)
-                        .orElse(null)
-        );
-
-        long inputTokens =
-                response.usage().inputTokens();
-
-        long outputTokens =
-                response.usage().outputTokens();
-
-        trace.setInputTokens(
-                inputTokens
-        );
-
-        trace.setOutputTokens(
-                outputTokens
-        );
-
-        trace.setTotalTokens(
-                inputTokens + outputTokens
-        );
-
-        try {
-            String responseText =
-                    extractText(
-                            response
-                    );
-
-            GoalFitReasoningDecision decision =
-                    deserializeGoalFitDecision(
-                            responseText
-                    );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.SUCCESS
-            );
-
-            return new LlmResult<>(
-                    decision,
-                    trace
-            );
-
-        } catch (RuntimeException e) {
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.CONTRACT_VIOLATION
-            );
-
-            throw new LlmInvocationException(
-                    "Claude goal-fit reasoning violated the expected contract.",
-                    e,
-                    trace
-            );
-        }
-    }
 
     private GoalFitReasoningDecision deserializeGoalFitDecision(
             String responseText
@@ -1240,123 +1390,7 @@ public class ClaudeProvider
         }
     }
 
-    @Override
-    public LlmResult<RecommendationReasoningDecision> recommend(
-            Goal goal,
-            List<TrustAssessedCandidate> candidates
-    ) {
-        validateRecommendationInputs(
-                goal,
-                candidates
-        );
 
-        MessageCreateParams params =
-                MessageCreateParams.builder()
-                        .model(MODEL)
-                        .maxTokens(maxtokens)
-                        .addUserMessage(
-                                buildRecommendationPrompt(
-                                        goal,
-                                        candidates
-                                )
-                        )
-                        .build();
-
-        Message response;
-
-        try {
-            response =
-                    anthropicClient.messages()
-                            .create(params);
-
-        } catch (RuntimeException e) {
-
-            LlmCapabilityTrace trace =
-                    new LlmCapabilityTrace();
-
-            trace.setModel(
-                    MODEL.toString()
-            );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.PROVIDER_ERROR
-            );
-
-            throw new LlmInvocationException(
-                    "Claude recommendation reasoning invocation failed.",
-                    e,
-                    trace
-            );
-        }
-
-        LlmCapabilityTrace trace =
-                new LlmCapabilityTrace();
-
-        trace.setResponseId(
-                response.id()
-        );
-
-        trace.setModel(
-                response.model().toString()
-        );
-
-        trace.setStatus(
-                response.stopReason()
-                        .map(Object::toString)
-                        .orElse(null)
-        );
-
-        long inputTokens =
-                response.usage().inputTokens();
-
-        long outputTokens =
-                response.usage().outputTokens();
-
-        trace.setInputTokens(
-                inputTokens
-        );
-
-        trace.setOutputTokens(
-                outputTokens
-        );
-
-        trace.setTotalTokens(
-                inputTokens + outputTokens
-        );
-
-        try {
-            String responseText =
-                    extractText(
-                            response
-                    );
-
-            RecommendationReasoningDecision decision =
-                    deserializeRecommendationDecision(
-                            responseText
-                    );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.SUCCESS
-            );
-
-            return new LlmResult<>(
-                    decision,
-                    trace
-            );
-
-        } catch (RuntimeException e) {
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.CONTRACT_VIOLATION
-            );
-
-            throw new LlmInvocationException(
-                    "Claude recommendation reasoning violated the expected contract.",
-                    e,
-                    trace
-            );
-        }
-    }
 
     private RecommendationReasoningDecision deserializeRecommendationDecision(
             String responseText

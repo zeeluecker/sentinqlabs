@@ -1,6 +1,8 @@
 package com.sentinq.trust;
 
+import com.sentinq.evaluation.Capability;
 import com.sentinq.evaluation.LlmResult;
+import com.sentinq.evaluation.ModelCapabilityAssignments;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.trust.interpretation.EvidenceInterpretationService;
 import com.sentinq.trust.observations.MerchantEvidenceCollectionService;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class TrustMapOrchestrationService {
@@ -253,13 +256,14 @@ public class TrustMapOrchestrationService {
      * NEW MERCHANT-LEVEL OPTIMIZED PIPELINE
      * -------------------------------------------------------------------------
      */
+
     public MerchantTrustAssessment assessMerchant(
-            String provider,
+            UUID executionId,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            ModelCapabilityAssignments executionModelAssignments
     ) {
         validateMerchantInputs(
-                provider,
                 offer,
                 context
         );
@@ -277,11 +281,14 @@ public class TrustMapOrchestrationService {
 
         List<TrustEvidence> observedEvidence =
                 evidenceCollectionService.collectEvidence(
-                        provider,
+                        executionId,
                         offer.getMerchantId(),
                         offer.getMerchantName(),
                         offer,
-                        context
+                        context,
+                        executionModelAssignments.assignmentFor(
+                                Capability.MERCHANT_EVIDENCE_COLLECTION
+                        )
                 );
 
         long observationDuration =
@@ -299,11 +306,14 @@ public class TrustMapOrchestrationService {
 
         MerchantEvidenceSynthesis initialSynthesis =
                 synthesisService.synthesize(
-                        provider,
+                        executionId,
                         offer.getMerchantId(),
                         offer.getMerchantName(),
                         observedEvidence,
-                        context
+                        context,
+                        executionModelAssignments.assignmentFor(
+                                Capability.MERCHANT_EVIDENCE_SYNTHESIS
+                        )
                 );
 
         long initialSynthesisDuration =
@@ -332,12 +342,15 @@ public class TrustMapOrchestrationService {
 
             MerchantTargetedResearchDecision researchDecision =
                     targetedResearchService.research(
-                            provider,
+                            executionId,
                             offer.getMerchantId(),
                             offer.getMerchantName(),
                             observedEvidence,
                             initialSynthesis,
-                            context
+                            context,
+                            executionModelAssignments.assignmentFor(
+                                    Capability.MERCHANT_TARGETED_RESEARCH
+                            )
                     );
 
             if (researchDecision != null
@@ -374,7 +387,8 @@ public class TrustMapOrchestrationService {
         /*
          * STEP 5 — FINAL SYNTHESIS
          *
-         * This is the final reasoning pass.
+         * Refine the initial synthesis using the
+         * evidence produced by targeted research.
          *
          * Remaining uncertainty is preserved.
          * It does NOT trigger another research loop.
@@ -382,14 +396,28 @@ public class TrustMapOrchestrationService {
         long finalSynthesisStart =
                 System.currentTimeMillis();
 
-        MerchantEvidenceSynthesis finalSynthesis =
-                synthesisService.synthesize(
-                        provider,
-                        offer.getMerchantId(),
-                        offer.getMerchantName(),
-                        allEvidence,
-                        context
-                );
+        MerchantEvidenceSynthesis finalSynthesis;
+
+        if (researchedEvidence.isEmpty()) {
+
+            finalSynthesis =
+                    initialSynthesis;
+
+        } else {
+
+            finalSynthesis =
+                    synthesisService.refine(
+                            executionId,
+                            offer.getMerchantId(),
+                            offer.getMerchantName(),
+                            initialSynthesis,
+                            researchedEvidence,
+                            context,
+                            executionModelAssignments.assignmentFor(
+                                    Capability.MERCHANT_EVIDENCE_SYNTHESIS
+                            )
+                    );
+        }
 
         long finalSynthesisDuration =
                 System.currentTimeMillis()
@@ -428,6 +456,7 @@ public class TrustMapOrchestrationService {
                 initialSynthesis.materialQuestions() == null
                         ? 0
                         : initialSynthesis.materialQuestions().size();
+
         System.out.println(
                 "Initial material questions: "
                         + initialMaterialQuestionCount
@@ -488,17 +517,10 @@ public class TrustMapOrchestrationService {
     }
 
     private void validateMerchantInputs(
-            String provider,
+
             CandidateOffer offer,
             TrustContext context
     ) {
-        if (provider == null ||
-                provider.isBlank()) {
-
-            throw new IllegalArgumentException(
-                    "Provider is required."
-            );
-        }
 
         if (offer == null) {
             throw new IllegalArgumentException(

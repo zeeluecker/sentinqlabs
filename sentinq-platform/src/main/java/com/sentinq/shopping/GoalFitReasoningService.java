@@ -1,12 +1,13 @@
 package com.sentinq.shopping;
 
-import com.sentinq.evaluation.LlmInvocationObserver;
+import com.sentinq.evaluation.*;
 import com.sentinq.goal.Goal;
 import com.sentinq.resolution.CandidateOffer;
 import com.sentinq.resolution.GoalFitCandidate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class GoalFitReasoningService {
@@ -24,9 +25,10 @@ public class GoalFitReasoningService {
     }
 
     public List<GoalFitCandidate> rank(
-            String provider,
+            UUID executionId,
             Goal goal,
-            List<CandidateOffer> candidates
+            List<CandidateOffer> candidates,
+            ModelAssignment assignment
     ) {
         if (candidates == null ||
                 candidates.isEmpty()) {
@@ -34,14 +36,25 @@ public class GoalFitReasoningService {
         }
 
         GoalFitReasoningProvider reasoningProvider =
-                providerRegistry.getProvider(provider);
+                providerRegistry.getProvider(
+                        assignment.provider()
+                );
+
+        CapabilityIdentity capabilityIdentity =
+                new CapabilityIdentity(
+                        executionId,
+                        UUID.randomUUID(),
+                        Capability.GOAL_FIT_REASONING
+                );
 
         GoalFitReasoningDecision decision =
                 llmInvocationObserver.execute(
+                        capabilityIdentity,
                         () ->
                                 reasoningProvider.rank(
                                         goal,
-                                        candidates
+                                        candidates,
+                                        assignment.model()
                                 )
                 );
 

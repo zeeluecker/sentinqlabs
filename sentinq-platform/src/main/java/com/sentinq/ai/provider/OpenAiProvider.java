@@ -41,10 +41,17 @@ public class OpenAiProvider
 {
 
     private final OpenAIClient openAIClient;
-    public static final String MODEL = ChatModel.GPT_5_2.toString();
 
-    private static final String EVIDENCE_OBSERVATION_MODEL =
-            "gpt-5.4-mini";
+    /**
+     * Product Discovery → GPT-5.6 Sol
+     * Goal Fit → Luna
+     * Evidence Collection → Astra
+     * Evidence Synthesis → Luna
+     * Targeted Research → GPT-5.6 Sol
+     * Recommendation → GPT-5.6 Sol
+     */
+
+
 
     public OpenAiProvider() {
         this.openAIClient =
@@ -58,11 +65,12 @@ public class OpenAiProvider
 
     @Override
     public LlmResult<InterpretedShoppingGoal> interpretShoppingGoal(
-            String rawGoalText
+            String rawGoalText,
+            String model
     ) {
         StructuredResponseCreateParams<InterpretedShoppingGoal> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .input(buildPrompt(rawGoalText))
                         .text(InterpretedShoppingGoal.class)
                         .build();
@@ -80,7 +88,7 @@ public class OpenAiProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                    model
             );
 
             trace.setOutcome(
@@ -175,7 +183,8 @@ public class OpenAiProvider
     @Override
     public LlmResult<ProductSearchResult> searchProducts(
             Goal goal,
-            ConsumerPreferences preferences
+            ConsumerPreferences preferences,
+            String model
     ) {
         validateSearchInputs(
                 goal,
@@ -184,7 +193,7 @@ public class OpenAiProvider
 
         StructuredResponseCreateParams<ProductSearchResult> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .input(
                                 buildProductSearchPrompt(
                                         goal,
@@ -214,7 +223,7 @@ public class OpenAiProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                   model
             );
 
             trace.setOutcome(
@@ -311,11 +320,12 @@ public class OpenAiProvider
             String merchantId,
             String merchantName,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         StructuredResponseCreateParams<MerchantEvidenceCollectionDecision> params =
                 ResponseCreateParams.builder()
-                        .model(EVIDENCE_OBSERVATION_MODEL)
+                        .model(model)
                         .input(
                                 buildMerchantEvidenceCollectionPrompt(
                                         merchantId,
@@ -349,7 +359,7 @@ public class OpenAiProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    EVIDENCE_OBSERVATION_MODEL.toString()
+                    model
             );
 
             trace.setOutcome(
@@ -443,7 +453,8 @@ public class OpenAiProvider
     @Override
     public LlmResult<GoalFitReasoningDecision> rank(
             Goal goal,
-            List<CandidateOffer> candidates
+            List<CandidateOffer> candidates,
+            String model
     ) {
         validateGoalFitInputs(
                 goal,
@@ -452,7 +463,7 @@ public class OpenAiProvider
 
         StructuredResponseCreateParams<GoalFitReasoningDecision> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .input(
                                 buildGoalFitPrompt(
                                         goal,
@@ -477,7 +488,7 @@ public class OpenAiProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+               model
             );
 
             trace.setOutcome(
@@ -562,6 +573,128 @@ public class OpenAiProvider
 
             throw new LlmInvocationException(
                     "OpenAI goal-fit reasoning violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
+    }
+
+    @Override
+    public LlmResult<RecommendationReasoningDecision> recommend(
+            Goal goal,
+            List<TrustAssessedCandidate> candidates,
+            String model
+    ) {
+        StructuredResponseCreateParams<RecommendationReasoningDecision> params =
+                ResponseCreateParams.builder()
+                        .model(model)
+                        .input(
+                                buildRecommendationPrompt(
+                                        goal,
+                                        candidates
+                                )
+                        )
+                        .text(
+                                RecommendationReasoningDecision.class
+                        )
+                        .build();
+
+        StructuredResponse<RecommendationReasoningDecision> response;
+
+        try {
+            response =
+                    openAIClient.responses()
+                            .create(params);
+
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(model);
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI recommendation reasoning invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
+        );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.status().toString()
+        );
+
+        response.usage().ifPresent(usage -> {
+            trace.setInputTokens(
+                    usage.inputTokens()
+            );
+
+            trace.setOutputTokens(
+                    usage.outputTokens()
+            );
+
+            trace.setReasoningTokens(
+                    usage.outputTokensDetails()
+                            .reasoningTokens()
+            );
+
+            trace.setTotalTokens(
+                    usage.totalTokens()
+            );
+        });
+
+        try {
+            RecommendationReasoningDecision decision =
+                    response.output()
+                            .stream()
+                            .flatMap(outputItem ->
+                                    outputItem.message().stream()
+                            )
+                            .flatMap(message ->
+                                    message.content().stream()
+                            )
+                            .flatMap(content ->
+                                    content.outputText().stream()
+                            )
+                            .findFirst()
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "OpenAI returned no structured recommendation decision."
+                                    )
+                            );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    decision,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "OpenAI recommendation reasoning violated the expected contract.",
                     e,
                     trace
             );
@@ -983,7 +1116,7 @@ public class OpenAiProvider
 
         StructuredResponseCreateParams<ContextResearchDecision> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model("GPT-5.6 SolSOL5_6")
                         .input(
                                 buildContextResearchPrompt(
                                         merchantId,
@@ -1431,44 +1564,59 @@ public class OpenAiProvider
             ConsumerPreferences preferences
     ) {
         return """
-            You are performing product discovery for Sentinq.
+        You are performing product discovery for Sentinq.
 
-            Search the public web for real, currently listed products.
+        Search the public web for real, currently listed products.
 
-            Shopping goal:
-            - Product: %s
-            - Original request: %s
-            - Maximum total budget: %d cents
-            - Delivery deadline: %s
-            - Substitutions allowed: %s
+        Shopping goal:
+        - Product: %s
+        - Original request: %s
+        - Maximum total budget: %d cents
+        - Delivery deadline: %s
+        - Substitutions allowed: %s
 
-            Consumer merchant preferences:
-            - Preferred merchants: %s
-            - Avoided merchants: %s
-            - Preferred merchant types: %s
-            - Minimum fulfillment score: %s
-            - Minimum review score: %s
-            - Ask before using a new merchant: %s
+        Consumer merchant preferences:
+        - Preferred merchants: %s
+        - Avoided merchants: %s
+        - Preferred merchant types: %s
+        - Minimum fulfillment score: %s
+        - Minimum review score: %s
+        - Ask before using a new merchant: %s
 
-            Rules:
-            - Return no more than five offers.
-            - Prefer explicitly preferred merchants where relevant.
-            - Do not return avoided merchants.
-            - Return only real products discovered through web search.
-            - Do not invent merchants, URLs, prices, or availability.
-            - productPriceCents must contain the listed item price only.
-            - Shipping, tax, and delivery feasibility will be resolved
-              separately by Sentinq.
-            -Include a concise factual product description containing attributes
-                   relevant to the consumer's goal when those attributes are supported
-                   by the discovered product information.
-            
-            - Do not invent product attributes that are not supported by the
-                   discovered source.
-            - Include a concise explanation of why each product appears to match
-                   the consumer's goal.
+        Rules:
+        - Return no more than five offers.
+        - Prefer explicitly preferred merchants where relevant.
+        - Do not return avoided merchants.
+        - Return only real products discovered through web search.
+        - Do not invent merchants, URLs, prices, or availability.
+        - productPriceCents must contain the listed item price only.
+        - Shipping, tax, and delivery feasibility will be resolved
+          separately by Sentinq.
 
-            """.formatted(
+        - Include a concise factual product description containing attributes
+          relevant to the consumer's goal when those attributes are supported
+          by the discovered product information.
+
+        - Do not invent product attributes that are not supported by the
+          discovered source.
+
+        - Include a concise explanation of why each product appears to match
+          the consumer's goal.
+
+        - When a direct URL for the product's primary image can be reliably
+          established from the discovered product information, return it as
+          productImageUrl.
+
+        - productImageUrl is presentation metadata only. Do not use the
+          presence, absence, appearance, or quality of a product image when
+          deciding whether a product matches the consumer's goal.
+
+        - Do not infer, construct, transform, or guess an image URL.
+
+        - If a direct product image URL cannot be reliably established,
+          return null for productImageUrl.
+
+        """.formatted(
                 goal.getProductName(),
                 goal.getOriginalRequest(),
                 goal.getMaximumTotalCents(),
@@ -1524,129 +1672,6 @@ public class OpenAiProvider
                 Consumer goal:
                 %s
                 """.formatted(rawGoalText);
-    }
-
-    @Override
-    public LlmResult<RecommendationReasoningDecision> recommend(
-            Goal goal,
-            List<TrustAssessedCandidate> candidates
-    ) {
-        StructuredResponseCreateParams<RecommendationReasoningDecision> params =
-                ResponseCreateParams.builder()
-                        .model(MODEL)
-                        .input(
-                                buildRecommendationPrompt(
-                                        goal,
-                                        candidates
-                                )
-                        )
-                        .text(
-                                RecommendationReasoningDecision.class
-                        )
-                        .build();
-
-        StructuredResponse<RecommendationReasoningDecision> response;
-
-        try {
-            response =
-                    openAIClient.responses()
-                            .create(params);
-
-        } catch (RuntimeException e) {
-
-            LlmCapabilityTrace trace =
-                    new LlmCapabilityTrace();
-
-            trace.setModel(
-                    MODEL.toString()
-            );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.PROVIDER_ERROR
-            );
-
-            throw new LlmInvocationException(
-                    "OpenAI recommendation reasoning invocation failed.",
-                    e,
-                    trace
-            );
-        }
-
-        LlmCapabilityTrace trace =
-                new LlmCapabilityTrace();
-
-        trace.setResponseId(
-                response.id()
-        );
-
-        trace.setModel(
-                response.model().toString()
-        );
-
-        trace.setStatus(
-                response.status().toString()
-        );
-
-        response.usage().ifPresent(usage -> {
-            trace.setInputTokens(
-                    usage.inputTokens()
-            );
-
-            trace.setOutputTokens(
-                    usage.outputTokens()
-            );
-
-            trace.setReasoningTokens(
-                    usage.outputTokensDetails()
-                            .reasoningTokens()
-            );
-
-            trace.setTotalTokens(
-                    usage.totalTokens()
-            );
-        });
-
-        try {
-            RecommendationReasoningDecision decision =
-                    response.output()
-                            .stream()
-                            .flatMap(outputItem ->
-                                    outputItem.message().stream()
-                            )
-                            .flatMap(message ->
-                                    message.content().stream()
-                            )
-                            .flatMap(content ->
-                                    content.outputText().stream()
-                            )
-                            .findFirst()
-                            .orElseThrow(() ->
-                                    new IllegalStateException(
-                                            "OpenAI returned no structured recommendation decision."
-                                    )
-                            );
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.SUCCESS
-            );
-
-            return new LlmResult<>(
-                    decision,
-                    trace
-            );
-
-        } catch (RuntimeException e) {
-
-            trace.setOutcome(
-                    LlmInvocationOutcome.CONTRACT_VIOLATION
-            );
-
-            throw new LlmInvocationException(
-                    "OpenAI recommendation reasoning violated the expected contract.",
-                    e,
-                    trace
-            );
-        }
     }
 
     private String buildRecommendationPrompt(

@@ -32,8 +32,6 @@ public class ClaudeMerchantEvidenceSynthesisProvider
      * Once provider equivalence is proven, we can route refinement
      * to a faster Claude model just as we did with OpenAI.
      */
-    private static final String MODEL =
-            Model.CLAUDE_SONNET_5.toString();
 
     private final AnthropicClient anthropicClient;
     private final ObjectMapper objectMapper;
@@ -58,7 +56,8 @@ public class ClaudeMerchantEvidenceSynthesisProvider
             String merchantId,
             String merchantName,
             List<TrustEvidence> evidence,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateSynthesisInputs(
                 merchantId,
@@ -82,7 +81,7 @@ public class ClaudeMerchantEvidenceSynthesisProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(8192L)
                         .addUserMessage(prompt)
                         .build();
@@ -102,7 +101,7 @@ public class ClaudeMerchantEvidenceSynthesisProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                   model
             );
 
             trace.setOutcome(
@@ -186,12 +185,13 @@ public class ClaudeMerchantEvidenceSynthesisProvider
     }
 
     @Override
-    public MerchantEvidenceSynthesis refineSynthesis(
+    public LlmResult<MerchantEvidenceSynthesis> refineSynthesis(
             String merchantId,
             String merchantName,
             MerchantEvidenceSynthesis initialSynthesis,
             List<TrustEvidence> researchedEvidence,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateRefinementInputs(
                 merchantId,
@@ -217,21 +217,101 @@ public class ClaudeMerchantEvidenceSynthesisProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(8192L)
                         .addUserMessage(prompt)
                         .build();
 
-        Message response =
-                anthropicClient.messages()
-                        .create(params);
+        Message response;
 
-        String responseText =
-                extractText(response);
+        try {
+            response =
+                    anthropicClient.messages()
+                            .create(params);
 
-        return deserializeSynthesis(
-                responseText
+        } catch (RuntimeException e) {
+
+            LlmCapabilityTrace trace =
+                    new LlmCapabilityTrace();
+
+            trace.setModel(model);
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.PROVIDER_ERROR
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence refinement invocation failed.",
+                    e,
+                    trace
+            );
+        }
+
+        LlmCapabilityTrace trace =
+                new LlmCapabilityTrace();
+
+        trace.setResponseId(
+                response.id()
         );
+
+        trace.setModel(
+                response.model().toString()
+        );
+
+        trace.setStatus(
+                response.stopReason()
+                        .map(Object::toString)
+                        .orElse(null)
+        );
+
+        long inputTokens =
+                response.usage().inputTokens();
+
+        long outputTokens =
+                response.usage().outputTokens();
+
+        trace.setInputTokens(
+                inputTokens
+        );
+
+        trace.setOutputTokens(
+                outputTokens
+        );
+
+        trace.setTotalTokens(
+                inputTokens + outputTokens
+        );
+
+        try {
+            String responseText =
+                    extractText(response);
+
+            MerchantEvidenceSynthesis synthesis =
+                    deserializeSynthesis(
+                            responseText
+                    );
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.SUCCESS
+            );
+
+            return new LlmResult<>(
+                    synthesis,
+                    trace
+            );
+
+        } catch (RuntimeException e) {
+
+            trace.setOutcome(
+                    LlmInvocationOutcome.CONTRACT_VIOLATION
+            );
+
+            throw new LlmInvocationException(
+                    "Claude merchant evidence refinement violated the expected contract.",
+                    e,
+                    trace
+            );
+        }
     }
 
     private String buildEvidenceSynthesisPrompt(

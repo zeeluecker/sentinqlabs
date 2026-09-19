@@ -20,7 +20,7 @@ import java.util.List;
 public class OpenAiMerchantTargetedResearchProvider
         implements MerchantTargetedResearchProvider {
 
-    private static final String MODEL = "gpt-5";
+
 
     private final OpenAIClient openAIClient;
 
@@ -40,7 +40,8 @@ public class OpenAiMerchantTargetedResearchProvider
             String merchantName,
             List<TrustEvidence> existingEvidence,
             MerchantEvidenceSynthesis synthesis,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateInputs(
                 merchantId,
@@ -52,7 +53,7 @@ public class OpenAiMerchantTargetedResearchProvider
 
         StructuredResponseCreateParams<MerchantTargetedResearchDecision> params =
                 ResponseCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .input(
                                 buildTargetedResearchPrompt(
                                         merchantId,
@@ -86,9 +87,7 @@ public class OpenAiMerchantTargetedResearchProvider
             LlmCapabilityTrace trace =
                     new LlmCapabilityTrace();
 
-            trace.setModel(
-                    MODEL.toString()
-            );
+            trace.setModel(model);
 
             trace.setOutcome(
                     LlmInvocationOutcome.PROVIDER_ERROR

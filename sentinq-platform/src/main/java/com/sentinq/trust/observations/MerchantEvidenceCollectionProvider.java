@@ -12,6 +12,7 @@ public interface MerchantEvidenceCollectionProvider {
             String merchantId,
             String merchantName,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            String model
     );
 }

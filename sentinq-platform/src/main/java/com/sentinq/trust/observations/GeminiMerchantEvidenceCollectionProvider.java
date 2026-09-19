@@ -21,8 +21,7 @@ import java.util.List;
 public class GeminiMerchantEvidenceCollectionProvider
         implements MerchantEvidenceCollectionProvider {
 
-    private static final String MODEL =
-            "gemini-3.1-pro-preview";
+
 
     private final Client geminiClient;
     private final ObjectMapper objectMapper;
@@ -53,7 +52,8 @@ public class GeminiMerchantEvidenceCollectionProvider
             String merchantId,
             String merchantName,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateInputs(
                 merchantId,
@@ -92,7 +92,7 @@ public class GeminiMerchantEvidenceCollectionProvider
         try {
             response =
                     geminiClient.models.generateContent(
-                            MODEL,
+                            model,
                             prompt,
                             config
                     );
@@ -103,7 +103,7 @@ public class GeminiMerchantEvidenceCollectionProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL
+                    model
             );
 
             trace.setOutcome(
@@ -127,6 +127,20 @@ public class GeminiMerchantEvidenceCollectionProvider
         response.modelVersion().ifPresent(
                 trace::setModel
         );
+
+        response.candidates()
+                .flatMap(candidates ->
+                        candidates.stream()
+                                .findFirst()
+                )
+                .flatMap(candidate ->
+                        candidate.finishReason()
+                )
+                .ifPresent(finishReason ->
+                        trace.setStatus(
+                                finishReason.toString()
+                        )
+                );
 
         response.usageMetadata().ifPresent(usage -> {
 

@@ -22,8 +22,6 @@ import java.util.stream.Collectors;
 public class ClaudeMerchantEvidenceCollectionProvider
         implements MerchantEvidenceCollectionProvider {
 
-    private static final String MODEL =
-            Model.CLAUDE_SONNET_5.toString();
 
     private final AnthropicClient anthropicClient;
     private final ObjectMapper objectMapper;
@@ -48,7 +46,8 @@ public class ClaudeMerchantEvidenceCollectionProvider
             String merchantId,
             String merchantName,
             CandidateOffer offer,
-            TrustContext context
+            TrustContext context,
+            String model
     ) {
         validateInputs(
                 merchantId,
@@ -64,7 +63,7 @@ public class ClaudeMerchantEvidenceCollectionProvider
 
         MessageCreateParams params =
                 MessageCreateParams.builder()
-                        .model(MODEL)
+                        .model(model)
                         .maxTokens(8192L)
                         .addTool(webSearchTool)
                         .addUserMessage(
@@ -90,7 +89,7 @@ public class ClaudeMerchantEvidenceCollectionProvider
                     new LlmCapabilityTrace();
 
             trace.setModel(
-                    MODEL.toString()
+                    model
             );
 
             trace.setOutcome(

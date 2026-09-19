@@ -45,6 +45,14 @@ public class CandidateOfferFactory {
         candidate.setDiscoveryMatchReason(
                 searchOffer.matchReason
         );
+
+        candidate.setProductImageUrl(
+                searchOffer.productImageUrl
+        );
+
+        candidate.setMerchantUrl(
+                searchOffer.productUrl
+        );
         /*
          * These values are not yet backed by a real reputation service.
          * Keep them neutral rather than pretending search supplied them.

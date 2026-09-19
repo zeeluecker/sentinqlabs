@@ -94,8 +94,12 @@ public class GoalFactory {
             );
         }
 
+
         if (interpretation.clarificationQuestions != null &&
                 !interpretation.clarificationQuestions.isEmpty()) {
+            System.out.println(
+                    "Goal clarification questions: " +
+                            interpretation.clarificationQuestions);
             throw new GoalClarificationRequiredException(
                     interpretation.clarificationQuestions
             );
