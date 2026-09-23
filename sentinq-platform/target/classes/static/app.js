@@ -375,6 +375,8 @@ function renderConnectedAgents(
 const AVAILABLE_MODELS = {
   openai: [
     { value: "gpt-6-astra", label: "GPT-6 Astra" },
+    { value: "gpt-6-sol", label: "GPT-6 Sol" },
+    { value: "gpt-6-luna", label: "GPT-6 Luna" },
     { value: "gpt-5.6", label: "GPT-5.6 Sol" },
     { value: "gpt-5.6-terra", label: "GPT-5.6 Terra" },
     { value: "gpt-5.6-luna", label: "GPT-5.6 Luna" }
@@ -383,7 +385,8 @@ const AVAILABLE_MODELS = {
   claude: [
     { value: "claude-fable-5", label: "Claude Fable 5" },
     { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
-    { value: "claude-opus-5", label: "Claude Opus 5" }
+    { value: "claude-opus-5", label: "Claude Opus 5" },
+    { value: "claude-opus-5-5", label: "Claude Opus 5.5" }
   ],
   gemini: [
     { value: "gemini-3.8-flash",label: "Gemini 3.8 Flash"},
