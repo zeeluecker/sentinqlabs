@@ -316,7 +316,7 @@ public class ShoppingOrchestrationService {
         goalFitCandidates = goalFitReasoningService.rank(
                 trace.getTraceId(),
                 goal,
-                candidates,
+                screenedCandidates,
                 executionModelAssignments.assignmentFor(
                         Capability.GOAL_FIT_REASONING
                 )
